@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chromecast Stream Controller</title>
+    
+    <!-- Material UI & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #121212; 
+            color: white;
+            font-family: 'Roboto', sans-serif;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        select, input {
+            background: #333;
+            color: white;
+        }
+        .btn {
+            margin-top: 10px;
+            width: 100%;
+            background: #6200ea;
+        }
+        .btn:hover {
+            background: #3700b3;
+        }
+        .status-message {
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h4><i class="material-icons">cast</i> Chromecast Controller</h4>
+        <div class="card">
+            <h5>Chromecast Status</h5>
+            <p class="status-text" id="status">Not connected</p>
+            <p><b>Now Playing:</b> <span id="title">-</span></p>
+            <p><b>Type:</b> <span id="content_type">-</span></p>
+            <p><b>Duration:</b> <span id="duration">0</span> sec</p>
+            <p><b>Progress:</b> <span id="current_time">0</span> sec</p>
+            <p><b>Volume:</b> <span id="volume">0</span></p>
+        </div>
+
+        <div class="card">
+            <button class="btn waves-effect waves-light" onclick="searchChromecast()">
+                <i class="material-icons left">search</i> Search Chromecast Devices
+            </button>
+
+            <br><br>
+
+            <label>Choose Chromecast:</label>
+            <select id="device_name" class="browser-default">
+                <option value="">Select a device</option>
+            </select>
+            <button class="btn waves-effect waves-light" onclick="connectChromecast()">
+                <i class="material-icons left">cast_connected</i> Connect
+            </button>
+        </div>
+
+        <br>
+        <div class="card">
+            <input type="text" id="website_url" placeholder="Enter website URL">
+            <button class="btn" onclick="extractHLS()">Find Stream</button>
+        </div>
+        <div class="card">
+            <label>Enter HLS URL:</label>
+            <input type="text" id="hls_url" class="white-text" placeholder="Paste HLS URL here...">
+
+            <button class="btn waves-effect waves-light" onclick="castStream()">
+                <i class="material-icons left">play_arrow</i> Start Stream
+            </button>
+            <button class="btn waves-effect waves-light" onclick="refreshStream()">
+                <i class="material-icons left">play_arrow</i> Start Stream
+            </button>
+            <button class="btn red waves-effect waves-light" onclick="stopStream()">
+                <i class="material-icons left">stop</i> Stop Stream
+            </button>
+        </div>
+
+        <p class="status-message" id="status"></p>
+    </div>
+
+    <!-- Materialize JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <script>
+        let socket = io();
+
+        socket.on("update_status", (data) => {
+            document.getElementById("status").innerText = data.status;
+            document.getElementById("title").innerText = data.title;
+            document.getElementById("content_type").innerText = data.content_type;
+            document.getElementById("duration").innerText = data.duration;
+            document.getElementById("current_time").innerText = data.current_time;
+            document.getElementById("volume").innerText = data.volume;
+        });
+        async function searchChromecast() {
+            let response = await fetch("/search-chromecast");
+            let result = await response.json();
+            let devices = result.devices;
+
+            let deviceSelect = document.getElementById("device_name");
+            deviceSelect.innerHTML = ""; // Clear existing options
+
+            if (devices.length > 0) {
+                devices.forEach(device => {
+                    let option = document.createElement("option");
+                    option.value = device;
+                    option.textContent = device;
+                    deviceSelect.appendChild(option);
+                });
+                M.toast({html: 'Chromecast devices found!', classes: 'green'});
+            } else {
+                M.toast({html: 'No Chromecast devices found.', classes: 'red'});
+            }
+        }
+
+        async function connectChromecast() {
+            let device_name = document.getElementById("device_name").value;
+            if (!device_name) {
+                M.toast({html: 'Please select a Chromecast!', classes: 'red'});
+                return;
+            }
+
+            let response = await fetch("/connect-chromecast", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ device_name: device_name })
+            });
+
+            let result = await response.json();
+            document.getElementById("status").innerText = result.message || result.error;
+            M.toast({html: result.message || result.error, classes: result.error ? 'red' : 'green'});
+            socket.emit("request_status");
+        }
+
+        async function castStream() {
+            let hls_url = document.getElementById("hls_url").value;
+            if (!hls_url) {
+                M.toast({html: 'Please enter an HLS URL!', classes: 'red'});
+                return;
+            }
+
+            let response = await fetch("/cast", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hls_url: hls_url })
+            });
+
+            let result = await response.json();
+            document.getElementById("status").innerText = result.message;
+            M.toast({html: result.message, classes: 'green'});
+        }
+
+        async function stopStream() {
+            let response = await fetch("/stop", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" }
+            });
+
+            let result = await response.json();
+            document.getElementById("status").innerText = result.message;
+            M.toast({html: result.message, classes: 'yellow'});
+        }
+        async function refreshStream() {
+            let response = await fetch("/refresh", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" }
+            });
+
+            let result = await response.json();
+            document.getElementById("status").innerText = result.message;
+            M.toast({html: result.message, classes: 'yellow'});
+        }
+        async function extractHLS() {
+            let website_url = document.getElementById("website_url").value;
+            let response = await fetch("/extract-hls", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ website_url })
+            });
+            let result = await response.json();
+            if (result.error) {
+                M.toast({html: result.error, classes: 'red'});
+                return;
+            }
+            document.getElementById("hls_url").value = result.hls_url || "";
+        }
+    </script>
+
+</body>
+</html>
