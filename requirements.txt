@@ -5,3 +5,4 @@ Flask_SocketIO==5.5.1
 playwright==1.50.0
 PyChromecast==13.1.0
 zeroconf==0.144.3
+Werkzeug==2.2.2

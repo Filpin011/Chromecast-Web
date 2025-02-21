@@ -18,6 +18,7 @@ def get_chromecast_devices():
     browser.start_discovery()
     time.sleep(5)  # Wait for devices to be discovered
     browser.stop_discovery()
+    print(browser.devices)
 
     return devices
 def connect_to_chromecast(device_name):
@@ -66,7 +67,7 @@ def stream_to_chromecast(hls_url, chromecast_name):
             # If we have a chunk ready to send, send it to Chromecast
             if len(video_queue) > 0:
                 chunk = video_queue.popleft()
-                media_controller.play_media(chunk, 'video/mp4')  # Adjust MIME type if needed
+                media_controller.play_media(chunk, 'application/x-mpegURL')  # Adjust MIME type if needed
 
             # Sleep to give Chromecast time to process and avoid overloading
             time.sleep(0.1)
@@ -81,8 +82,8 @@ def stream_to_chromecast(hls_url, chromecast_name):
     print("Stream finished.")
 
 # Example usage
-hls_url = "https://top1-cdnnew.iosplayer.ru/top1-cdn/calcioXserie/mono.m3u8"  # Replace with your HLS stream URL
-chromecast_name = "Salotto"  # Replace with your Chromecast device's friendly name
+hls_url = "https://live.servis.hair/hls/porto.m3u8"  # Replace with your HLS stream URL
+chromecast_name = "32PFS6402/12"  # Replace with your Chromecast device's friendly name
 
 # Start streaming to Chromecast
 stream_to_chromecast(hls_url, chromecast_name)

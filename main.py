@@ -93,15 +93,16 @@ def cast_to_chromecast(hls_url):
         return "Chromecast not connected."
 
     mc = selected_chromecast.media_controller
-    mc.play_media(hls_url,"application/x-mpegURL", stream_type='LIVE')
-    time.sleep(5)  # Give time to start streaming
-    mc.seek(999999)
-    mc.block_until_active()
+    mc.play_media(hls_url,"video/mp2t", stream_type='LIVE')
     return "Streaming started on Chromecast."
 
 def stop_stream():
     """Stops the current stream and restores the static image."""
-    return display_image_on_chromecast()
+    global selected_chromecast, static_image_url
+    if not selected_chromecast:
+        return "Chromecast not connected."
+
+    return selected_chromecast.disconnect()
 
 def refresh():
     """Force to seek to the end of the stream."""
