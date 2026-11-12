@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.spyOn(api.favorites, "list").mockResolvedValue([]);
 });
 
-const box = () => screen.getByLabelText("URL, playlist o link video");
+const box = () => screen.getByLabelText("URL, playlist or video link");
 const pause = () => act(() => new Promise((r) => setTimeout(r, 900)));
 
 describe("Cast page resolve policy", () => {
@@ -49,7 +49,7 @@ describe("Cast page resolve policy", () => {
     fireEvent.change(box(), { target: { value: "https://site.com/pag" } });
     await pause();
     expect(resolve).not.toHaveBeenCalled();
-    expect(screen.getByTestId("input-hint")).toHaveTextContent("Invio");
+    expect(screen.getByTestId("input-hint")).toHaveTextContent("Enter");
     fireEvent.keyDown(box(), { key: "Enter" });
     await waitFor(() => expect(resolve).toHaveBeenCalledWith("https://site.com/pag", undefined, expect.anything()));
   });

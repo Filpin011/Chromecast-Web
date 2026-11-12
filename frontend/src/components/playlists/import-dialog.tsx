@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useImportPlaylist } from "@/hooks/queries";
 import type { Playlist } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export function ImportPlaylistDialog({
@@ -19,6 +20,7 @@ export function ImportPlaylistDialog({
   onOpenChange: (o: boolean) => void;
   onImported?: (p: Playlist) => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<"url" | "file">("url");
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
@@ -52,25 +54,25 @@ export function ImportPlaylistDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Importa playlist</DialogTitle>
-          <DialogDescription>M3U / M3U8 da un link IPTV o da un file.</DialogDescription>
+          <DialogTitle>{t("playlists.import")}</DialogTitle>
+          <DialogDescription>{t("import.description")}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist">
           {(
             [
-              ["url", Link2, "Da URL"],
-              ["file", FileUp, "Da file"],
+              ["url", Link2, t("import.fromUrl")],
+              ["file", FileUp, t("import.fromFile")],
             ] as const
-          ).map(([t, Icon, label]) => (
+          ).map(([id, Icon, label]) => (
             <button
-              key={t}
+              key={id}
               type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
               className={cn(
                 "flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium",
-                tab === t ? "bg-background shadow-sm" : "text-muted-foreground",
+                tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
               <Icon className="size-4" /> {label}
@@ -80,7 +82,7 @@ export function ImportPlaylistDialog({
         <form onSubmit={submit} className="space-y-4">
           {tab === "url" ? (
             <div className="space-y-1.5">
-              <Label htmlFor="pl-url">URL della playlist</Label>
+              <Label htmlFor="pl-url">{t("import.url")}</Label>
               <Input
                 id="pl-url"
                 value={url}
@@ -93,7 +95,7 @@ export function ImportPlaylistDialog({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Label>File M3U</Label>
+              <Label>{t("import.file")}</Label>
               <input
                 ref={fileRef}
                 type="file"
@@ -107,13 +109,13 @@ export function ImportPlaylistDialog({
                 className="flex min-h-24 w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed text-sm text-muted-foreground hover:border-primary/50"
               >
                 <FileUp className="size-6" />
-                {file ? <span className="font-medium text-foreground">{file.name}</span> : "Scegli un file .m3u"}
+                {file ? <span className="font-medium text-foreground">{file.name}</span> : t("import.chooseFile")}
               </button>
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="pl-name">Nome (opzionale)</Label>
-            <Input id="pl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. IPTV casa" className="h-11" />
+            <Label htmlFor="pl-name">{t("import.name")}</Label>
+            <Input id="pl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("import.namePlaceholder")} className="h-11" />
           </div>
           <Button
             type="submit"
@@ -122,7 +124,7 @@ export function ImportPlaylistDialog({
             disabled={mutation.isPending || (tab === "url" ? !url.trim() : !file)}
           >
             {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-            Importa
+            {t("playlists.importShort")}
           </Button>
         </form>
       </DialogContent>

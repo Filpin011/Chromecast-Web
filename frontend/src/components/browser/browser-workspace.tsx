@@ -11,6 +11,7 @@ import {
   Plus,
   Maximize2,
   Radar,
+  RotateCw,
   Smartphone,
   Square,
   X,
@@ -42,6 +43,7 @@ import {
   type ViewportMode,
 } from "@/lib/browser-session";
 import { rankCaptured } from "@/lib/captured";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/query";
@@ -113,6 +115,7 @@ export function BrowserWorkspace({
   onClose,
   onReopen,
 }: BrowserWorkspaceProps) {
+  const t = useT();
   const { state, send, setSink, dispatch, retry } = useBrowserSession(initial);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
@@ -164,13 +167,13 @@ export function BrowserWorkspace({
     if (!hasFrame) return;
     const missing = state.captured.filter((c) => !c.thumbnail && !snapped.current.has(c.id));
     if (!missing.length) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const shot = sinkRef.current?.snapshot();
       if (!shot) return;
       missing.forEach((c) => snapped.current.add(c.id));
       setSnapshots((prev) => ({ ...prev, ...Object.fromEntries(missing.map((c) => [c.id, shot])) }));
     }, 600);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [state.captured, hasFrame]);
 
   // Haptic + toast when the first stream shows up.
@@ -187,7 +190,7 @@ export function BrowserWorkspace({
     try {
       await api.browser.navigate(session.id, req);
     } catch (e) {
-      toast.error(errorMessage(e, "Navigazione non riuscita"));
+      toast.error(errorMessage(e, t("browser.navigateFailed")));
     }
   };
 
@@ -200,9 +203,9 @@ export function BrowserWorkspace({
     setAdblockBusy(true);
     try {
       dispatch({ type: "session", data: await api.browser.setAdblock(session.id, enabled) });
-      toast.success(enabled ? "Blocco pubblicità attivato su questo sito" : "Blocco pubblicità disattivato su questo sito");
+      toast.success(enabled ? t("adblock.enabledToast") : t("adblock.disabledToast"));
     } catch (e) {
-      toast.error(errorMessage(e, "Impossibile cambiare il blocco pubblicità"));
+      toast.error(errorMessage(e, t("adblock.toggleFailed")));
     } finally {
       setAdblockBusy(false);
     }
@@ -216,7 +219,7 @@ export function BrowserWorkspace({
     if (!send({ type: "popup_decision", id: popup.id, decision })) {
       api.browser.popupDecision(session.id, popup.id, decision).catch((e) => toast.error(errorMessage(e)));
     }
-    if (decision === "block_always") toast.success("Popup bloccati per sempre su questo sito");
+    if (decision === "block_always") toast.success(t("popup.blockedForever"));
   };
 
   const stopMedia = () => {
@@ -226,10 +229,10 @@ export function BrowserWorkspace({
 
   return (
     <div className="flex h-viewport min-h-0 flex-col">
-      {/* Top bar: every control is a 44px target; reload lives inside the URL pill */}
+      {/* Top bar: every control is a 44px target; reload lives inside the URL pill (in "More" below 400px) */}
       <div className="flex items-center gap-1 border-b bg-background/95 px-1 pt-safe backdrop-blur">
         <div className="flex h-14 w-full items-center gap-0.5">
-          <Button variant="ghost" size="icon" className="shrink-0" aria-label="Menu" onClick={() => setMenuOpen(true)}>
+          <Button variant="ghost" size="icon" className="shrink-0" aria-label={t("browser.menu")} onClick={() => setMenuOpen(true)}>
             <Menu className="size-5" />
           </Button>
           <UrlField
@@ -251,7 +254,7 @@ export function BrowserWorkspace({
             variant="ghost"
             size="icon"
             className="shrink-0 bg-destructive/10 text-destructive hover:bg-destructive/20"
-            aria-label="Chiudi subito la sessione"
+            aria-label={t("browser.closeNow")}
             onClick={() => {
               haptic(12);
               onClose();
@@ -281,9 +284,9 @@ export function BrowserWorkspace({
             <button
               type="button"
               onClick={() => onReopen("mobile", session.url)}
-              className="absolute top-2 left-1/2 z-10 flex h-11 -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-4 text-sm font-medium shadow-lg backdrop-blur"
+              className="absolute top-2 left-1/2 z-10 flex h-11 max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-background/90 px-4 text-sm font-medium whitespace-nowrap shadow-lg backdrop-blur"
             >
-              <Maximize2 className="size-4" /> Adatta allo schermo
+              <Maximize2 className="size-4 shrink-0" /> <span className="truncate">{t("browser.fitScreen")}</span>
             </button>
           )}
           <div className="md:hidden">
@@ -317,7 +320,7 @@ export function BrowserWorkspace({
                 keyboard ? "bottom-17" : "bottom-3",
               )}
             >
-              <Radar className="size-4" /> {ranked.length} video
+              <Radar className="size-4" /> {t.plural("browser.videoCount", ranked.length)}
             </button>
           )}
           {/* Overlay, not a flex row: the session viewport is fitted 1:1 to this area, so taking
@@ -326,7 +329,7 @@ export function BrowserWorkspace({
         </div>
         <aside className="hidden w-80 shrink-0 flex-col border-l bg-background md:flex lg:w-96">
           <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-sm font-semibold">Stream rilevati</h2>
+            <h2 className="text-sm font-semibold">{t("browser.detectedStreams")}</h2>
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums">{ranked.length}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -344,50 +347,54 @@ export function BrowserWorkspace({
       </div>
 
       {/* Bottom toolbar */}
-      <nav aria-label="Navigazione browser" className="shrink-0 border-t bg-background/95 pb-safe backdrop-blur">
+      <nav aria-label={t("browser.navigation")} className="shrink-0 border-t bg-background/95 pb-safe backdrop-blur">
         <div className="grid h-13 grid-cols-7">
-        <Button variant="ghost" className="h-full rounded-none" aria-label="Indietro" onClick={() => navigate({ action: "back" })}>
+        <Button variant="ghost" className="h-full rounded-none" aria-label={t("common.back")} onClick={() => navigate({ action: "back" })}>
           <ArrowLeft className="size-5" />
         </Button>
-        <Button variant="ghost" className="h-full rounded-none" aria-label="Avanti" onClick={() => navigate({ action: "forward" })}>
+        <Button variant="ghost" className="h-full rounded-none" aria-label={t("browser.forward")} onClick={() => navigate({ action: "forward" })}>
           <ArrowRight className="size-5" />
         </Button>
-        <Button variant="ghost" className="h-full rounded-none" aria-label="Pagina iniziale" onClick={() => navigate({ url: homeUrl })}>
+        <Button variant="ghost" className="h-full rounded-none" aria-label={t("browser.home")} onClick={() => navigate({ url: homeUrl })}>
           <Home className="size-5" />
         </Button>
         <Button
           variant="ghost"
           className={cn("h-full rounded-none", keyboard && "text-primary")}
-          aria-label={keyboard ? "Nascondi tastiera" : "Tastiera"}
+          aria-label={keyboard ? t("browser.hideKeyboard") : t("browser.keyboard")}
           aria-pressed={keyboard}
           onClick={() => setKeyboard((k) => !k)}
         >
           <Keyboard className="size-5" />
         </Button>
-        <Button variant="ghost" className="h-full rounded-none" aria-label={`${tabs.length} sessioni aperte`} onClick={() => setSessionsOpen(true)}>
+        <Button variant="ghost" className="h-full rounded-none" aria-label={t.plural("browser.sessionsOpen", tabs.length)} onClick={() => setSessionsOpen(true)}>
           <span className="grid size-6 place-items-center rounded-md border-2 border-current text-[0.7rem] font-bold">{tabs.length}</span>
         </Button>
-        <Button variant="ghost" className="h-full rounded-none" aria-label="Nuova sessione" onClick={onNewSession}>
+        <Button variant="ghost" className="h-full rounded-none" aria-label={t("browser.newSession")} onClick={onNewSession}>
           <Plus className="size-5" />
         </Button>
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" className="h-full rounded-none" aria-label="Altro" />}>
+          <DropdownMenuTrigger render={<Button variant="ghost" className="h-full rounded-none" aria-label={t("common.more")} />}>
             <MoreHorizontal className="size-5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="w-60">
+            {/* the URL pill drops its reload control below 400px (see UrlField) */}
+            <DropdownMenuItem onClick={() => navigate({ action: "reload" })} className="min-[400px]:hidden">
+              <RotateCw className="size-4" /> {t("common.reload")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={stopMedia}>
-              <Square className="size-4" /> Ferma audio/video
+              <Square className="size-4" /> {t("browser.stopMedia")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setListOpen(true)} className="md:hidden">
-              <Radar className="size-4" /> Stream rilevati ({ranked.length})
+              <Radar className="size-4" /> {t("browser.detectedStreamsCount", { count: ranked.length })}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onReopen(mode === "mobile" ? "desktop" : "mobile", session.url)}>
               {mode === "mobile" ? <Monitor className="size-4" /> : <Smartphone className="size-4" />}
-              {mode === "mobile" ? "Versione desktop" : "Versione mobile"}
+              {mode === "mobile" ? t("browser.desktopVersion") : t("browser.mobileVersion")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={onClose}>
-              <X className="size-4" /> Chiudi sessione
+              <X className="size-4" /> {t("browser.closeSession")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -396,7 +403,7 @@ export function BrowserWorkspace({
 
       <Drawer open={listOpen} onOpenChange={setListOpen} showSwipeHandle>
         <DrawerContent>
-          <DrawerTitle className="px-4 pt-3 pb-2">Stream rilevati</DrawerTitle>
+          <DrawerTitle className="px-4 pt-3 pb-2">{t("browser.detectedStreams")}</DrawerTitle>
           <div className="overflow-y-auto px-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <CapturedList
               streams={ranked}

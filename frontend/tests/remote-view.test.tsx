@@ -61,9 +61,9 @@ describe("RemoteView connection feedback", () => {
     vi.useFakeTimers();
     try {
       render(<RemoteView {...base} closed={false} status="connecting" />);
-      expect(screen.queryByText(/Riconnessione/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Reconnecting/)).not.toBeInTheDocument();
       act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS + 10));
-      expect(screen.getByText(/Riconnessione/)).toBeInTheDocument();
+      expect(screen.getByText(/Reconnecting/)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -72,15 +72,15 @@ describe("RemoteView connection feedback", () => {
   it("offers a retry once the socket gave up", () => {
     const onRetry = vi.fn();
     render(<RemoteView {...base} closed={false} status="failed" onRetry={onRetry} />);
-    fireEvent.click(screen.getByRole("button", { name: /Riprova/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
     expect(onRetry).toHaveBeenCalled();
   });
 
   it("offers to reopen the page when the session closed", () => {
     const onReopen = vi.fn();
     render(<RemoteView {...base} closed status="closed" onReopen={onReopen} />);
-    expect(screen.getByText("Sessione chiusa")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Riapri questa pagina/ }));
+    expect(screen.getByText("Session closed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reopen this page/ }));
     expect(onReopen).toHaveBeenCalled();
   });
 });

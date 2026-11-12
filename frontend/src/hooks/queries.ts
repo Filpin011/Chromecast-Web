@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import type { FavoriteCreate, PlaylistImportRequest, Settings } from "@/lib/api/types";
+import { currentTranslator, t } from "@/i18n";
 import { errorMessage, qk } from "@/lib/query";
 
 export function useHealth() {
@@ -30,9 +31,9 @@ export function useImportPlaylist() {
     mutationFn: (req: PlaylistImportRequest) => api.playlists.import(req),
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: qk.playlists });
-      toast.success(`Playlist “${p.name}” importata`, { description: `${p.channel_count} canali` });
+      toast.success(t("playlists.imported", { name: p.name }), { description: currentTranslator().plural("playlists.channels", p.channel_count) });
     },
-    onError: (e) => toast.error(errorMessage(e, "Import non riuscito")),
+    onError: (e) => toast.error(errorMessage(e, t("playlists.importFailed"))),
   });
 }
 
@@ -42,9 +43,9 @@ export function useRefreshPlaylist() {
     mutationFn: (id: string) => api.playlists.refresh(id),
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: qk.playlists });
-      toast.success(`“${p.name}” aggiornata`, { description: `${p.channel_count} canali` });
+      toast.success(t("playlists.refreshed", { name: p.name }), { description: currentTranslator().plural("playlists.channels", p.channel_count) });
     },
-    onError: (e) => toast.error(errorMessage(e, "Aggiornamento non riuscito")),
+    onError: (e) => toast.error(errorMessage(e, t("playlists.refreshFailed"))),
   });
 }
 
@@ -69,7 +70,7 @@ export function useAddFavorite() {
     mutationFn: (req: FavoriteCreate) => api.favorites.add(req),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.favorites });
-      toast.success("Aggiunto ai preferiti");
+      toast.success(t("toast.addedToFavorites"));
     },
     onError: (e) => toast.error(errorMessage(e)),
   });
@@ -103,7 +104,7 @@ export function useClearHistory() {
     mutationFn: () => api.history.clear(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.history });
-      toast.success("Cronologia cancellata");
+      toast.success(t("library.historyCleared"));
     },
     onError: (e) => toast.error(errorMessage(e)),
   });
@@ -127,7 +128,7 @@ export function useUpdateSettings() {
     },
     onError: (e, _p, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.settings, ctx.prev);
-      toast.error(errorMessage(e, "Impostazioni non salvate"));
+      toast.error(errorMessage(e, t("settings.saveFailed")));
     },
     onSuccess: (s) => qc.setQueryData(qk.settings, s),
   });

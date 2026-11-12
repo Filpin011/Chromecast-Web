@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useCast } from "@/hooks/use-cast";
 import { api } from "@/lib/api";
 import type { CapturedStream } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { errorMessage, qk } from "@/lib/query";
 
 export interface StreamActions {
@@ -17,9 +18,10 @@ export interface StreamActions {
 
 /** Cast / queue / bookmark a stream captured by a remote browser session. */
 export function useStreamActions(sessionId: string | null, pageTitle?: string | null): StreamActions {
+  const t = useT();
   const { castCaptured, busy } = useCast();
   const qc = useQueryClient();
-  const titleOf = useCallback((s: CapturedStream) => s.title || pageTitle || "Stream rilevato", [pageTitle]);
+  const titleOf = useCallback((s: CapturedStream) => s.title || pageTitle || t("captured.fallbackTitle"), [pageTitle, t]);
 
   const cast = useCallback(
     (s: CapturedStream) => {
@@ -39,12 +41,12 @@ export function useStreamActions(sessionId: string | null, pageTitle?: string | 
       try {
         await api.browser.favorite(sessionId, s.id);
         qc.invalidateQueries({ queryKey: qk.favorites });
-        toast.success("Aggiunto ai preferiti", { description: titleOf(s) });
+        toast.success(t("toast.addedToFavorites"), { description: titleOf(s) });
       } catch (e) {
         toast.error(errorMessage(e));
       }
     },
-    [sessionId, qc, titleOf],
+    [sessionId, qc, titleOf, t],
   );
   return { cast, queue, favorite, busy };
 }

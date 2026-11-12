@@ -2,8 +2,8 @@ import { create } from "zustand";
 
 type DeviceResolver = (deviceId: string | null) => void;
 
-/** Title of the app-wide device sheet (same minimal sheet everywhere, per the Browser UX reference). */
-export const DEVICE_SHEET_TITLE = "Invia video a…";
+/** Dictionary key of the app-wide device sheet title (same minimal sheet everywhere, per the Browser UX reference). */
+export const DEVICE_SHEET_TITLE = "devices.sheetTitle";
 
 interface UiStore {
   nowPlayingOpen: boolean;

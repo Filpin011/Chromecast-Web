@@ -4,6 +4,7 @@ import { Volume1, Volume2, VolumeX } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { formatNumber, useT } from "@/i18n";
 import type { ControlAction } from "@/lib/api/types";
 
 export function VolumeControl({
@@ -15,6 +16,7 @@ export function VolumeControl({
   muted: boolean;
   onCommand: (action: ControlAction, value?: number) => void;
 }) {
+  const t = useT();
   const [drag, setDrag] = useState<number | null>(null);
   const shown = drag ?? (muted ? 0 : level);
   const Icon = muted || shown === 0 ? VolumeX : shown < 0.5 ? Volume1 : Volume2;
@@ -23,15 +25,15 @@ export function VolumeControl({
       <Button
         variant="ghost"
         size="icon"
-        aria-label={muted ? "Riattiva audio" : "Muto"}
+        aria-label={muted ? t("volume.unmute") : t("volume.mute")}
         aria-pressed={muted}
         onClick={() => onCommand(muted ? "unmute" : "mute")}
       >
         <Icon className="size-5" />
       </Button>
       <Slider
-        aria-label="Volume"
-        getAriaValueText={(_, v) => `${Math.round(v)}%`}
+        aria-label={t("volume.label")}
+        getAriaValueText={(_, v) => formatNumber(v / 100, { style: "percent" }, t.locale)}
         className="flex-1"
         min={0}
         max={100}

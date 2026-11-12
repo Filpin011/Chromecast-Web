@@ -42,7 +42,7 @@ describe("AppShell", () => {
     const shell = container.firstElementChild as HTMLElement;
     expect(shell.dataset.mini).toBe("on");
     expect(shell.dataset.tabbar).toBe("on");
-    const navs = () => screen.queryAllByRole("navigation", { name: "Navigazione principale" }).length;
+    const navs = () => screen.queryAllByRole("navigation", { name: "Main navigation" }).length;
     const before = navs(); // sidebar + bottom tab bar
 
     act(() => useUiStore.getState().setImmersive(true));
@@ -65,9 +65,9 @@ describe("AppShell chrome", () => {
       act(() => {
         vi.advanceTimersByTime(3000);
       });
-      expect(screen.getByText(/Connessione al server persa/)).toBeInTheDocument();
+      expect(screen.getByText(/Lost connection to the server/)).toBeInTheDocument();
       act(() => useUiStore.getState().setImmersive(true));
-      expect(screen.queryByText(/Connessione al server persa/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Lost connection to the server/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

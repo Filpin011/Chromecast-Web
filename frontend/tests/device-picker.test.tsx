@@ -27,14 +27,23 @@ beforeEach(() => {
 function renderPicker() {
   const onPicked = vi.fn();
   const onCancel = vi.fn();
-  renderWithProviders(<DevicePickerContent title="Invia video a…" onPicked={onPicked} onCancel={onCancel} />);
+  renderWithProviders(<DevicePickerContent title="Send video to…" onPicked={onPicked} onCancel={onCancel} />);
   return { onPicked, onCancel };
 }
 
 describe("DevicePickerContent", () => {
+  it("keeps the active device's disconnect button off the sheet edge, like the remove button", () => {
+    useAppStore.getState().applySnapshot(
+      makeAppState({ devices: [makeDevice(), makeDevice({ id: "m1", name: "Manuale", manual: true })] }),
+    );
+    renderPicker();
+    expect(screen.getByRole("button", { name: "Disconnect Salotto" })).toHaveClass("mr-2");
+    expect(screen.getByRole("button", { name: "Remove Manuale" })).toHaveClass("mr-2");
+  });
+
   it("lists online devices first and disables offline ones", () => {
     renderPicker();
-    expect(screen.getByText("Invia video a…")).toBeInTheDocument();
+    expect(screen.getByText("Send video to…")).toBeInTheDocument();
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
     expect(items[0]).toContain("Camera");
     expect(items[1]).toContain("Salotto");
@@ -57,7 +66,7 @@ describe("DevicePickerContent", () => {
     useAppStore.getState().applySnapshot(makeAppState({ version: 2 }));
     const connect = vi.spyOn(api.devices, "connect");
     const { onPicked } = renderPicker();
-    expect(screen.getByLabelText("Connesso")).toBeInTheDocument();
+    expect(screen.getByLabelText("Connected")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Salotto"));
     expect(onPicked).toHaveBeenCalledWith("dev-1");
     expect(connect).not.toHaveBeenCalled();
@@ -66,18 +75,18 @@ describe("DevicePickerContent", () => {
   it("refreshes the list with discovery", async () => {
     const discover = vi.spyOn(api.devices, "discover").mockResolvedValue([]);
     renderPicker();
-    fireEvent.click(screen.getByText("Aggiorna elenco"));
-    expect(await screen.findByText("Ricerca in corso…")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Refresh list"));
+    expect(await screen.findByText("Searching…")).toBeInTheDocument();
     await waitFor(() => expect(discover).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("Aggiorna elenco")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Refresh list")).toBeInTheDocument());
   });
 
   it("adds a device by IP", async () => {
     const add = vi.spyOn(api.devices, "addManual").mockResolvedValue(makeDevice({ id: "manual-x", manual: true }));
     renderPicker();
-    fireEvent.click(screen.getByText("Aggiungi per indirizzo IP"));
-    const input = await screen.findByLabelText("Indirizzo IP");
-    const submit = screen.getByRole("button", { name: "Aggiungi" });
+    fireEvent.click(screen.getByText("Add by IP address"));
+    const input = await screen.findByLabelText("IP address");
+    const submit = screen.getByRole("button", { name: "Add" });
     expect(submit).toBeDisabled();
     fireEvent.change(input, { target: { value: "192.168.1.77:8009" } });
     fireEvent.click(submit);
@@ -86,7 +95,7 @@ describe("DevicePickerContent", () => {
 
   it("cancels", () => {
     const { onCancel } = renderPicker();
-    fireEvent.click(screen.getByText("Annulla"));
+    fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
   });
 });
@@ -129,7 +138,7 @@ describe("DevicePickerSheet", () => {
     useUiStore.setState({ devicePickerOpen: false, pendingDevice: null });
     renderWithProviders(<DevicePickerSheet />);
     openDevicePicker();
-    expect(await screen.findAllByText("Invia video a…")).not.toHaveLength(0);
-    expect(screen.queryByText("Dispositivi")).not.toBeInTheDocument();
+    expect(await screen.findAllByText("Send video to…")).not.toHaveLength(0);
+    expect(screen.queryByText("Devices")).not.toBeInTheDocument();
   });
 });

@@ -1,8 +1,10 @@
+import type { MessageKey } from "@/i18n";
 import { Clapperboard, Compass, FolderOpen, Library, ListVideo, Settings, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
-  label: string;
+  /** Dictionary key of the label. */
+  label: MessageKey;
   icon: LucideIcon;
   /** Shown in the mobile tab bar. */
   tab: boolean;
@@ -11,12 +13,12 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Cast", icon: Clapperboard, tab: true },
-  { href: "/browser/", label: "Browser", icon: Compass, tab: true },
-  { href: "/playlists/", label: "Playlist", icon: ListVideo, tab: true },
-  { href: "/library/", label: "Libreria", icon: Library, tab: true },
-  { href: "/files/", label: "File locali", icon: FolderOpen, tab: false, requiresLocal: true },
-  { href: "/settings/", label: "Impostazioni", icon: Settings, tab: true },
+  { href: "/", label: "nav.cast", icon: Clapperboard, tab: true },
+  { href: "/browser/", label: "nav.browser", icon: Compass, tab: true },
+  { href: "/playlists/", label: "nav.playlists", icon: ListVideo, tab: true },
+  { href: "/library/", label: "nav.library", icon: Library, tab: true },
+  { href: "/files/", label: "nav.files", icon: FolderOpen, tab: false, requiresLocal: true },
+  { href: "/settings/", label: "nav.settings", icon: Settings, tab: true },
 ];
 
 export function isActivePath(pathname: string, href: string): boolean {

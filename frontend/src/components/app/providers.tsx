@@ -5,6 +5,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import { useState, type ReactNode } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { LocaleSync } from "@/i18n/locale-sync";
 import { makeQueryClient } from "@/lib/query";
 import { StateSocketBridge } from "./state-socket-bridge";
 
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={client}>
         <MotionConfig reducedMotion="user">
           <TooltipProvider>
+            <LocaleSync />
             <StateSocketBridge />
             {children}
           </TooltipProvider>

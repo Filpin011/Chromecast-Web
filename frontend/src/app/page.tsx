@@ -15,10 +15,12 @@ import { useAddFavorite, useFavorites, useHistory } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
 import { useDebounced } from "@/hooks/use-debounced";
 import { api } from "@/lib/api";
-import { formatRelative, SOURCE_LABEL } from "@/lib/format";
+import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
+import { useT } from "@/i18n";
 import { autoResolvesWhileTyping, detectInput } from "@/lib/input-detect";
 
 function Section({ title, icon: Icon, href, children }: { title: string; icon: typeof Clock; href?: string; children: React.ReactNode }) {
+  const t = useT();
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between px-1">
@@ -26,8 +28,9 @@ function Section({ title, icon: Icon, href, children }: { title: string; icon: t
           <Icon className="size-4" /> {title}
         </h2>
         {href && (
-          <Link href={href} className="text-sm font-medium text-primary">
-            Vedi tutto
+          // 44px touch target; the negative margin keeps the header row at text height
+          <Link href={href} className="-my-3 -mr-2 inline-flex min-h-11 items-center px-2 text-sm font-medium text-primary">
+            {t("common.seeAll")}
           </Link>
         )}
       </div>
@@ -40,6 +43,7 @@ export default function CastPage() {
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
   const debounced = useDebounced(input.trim(), 700);
+  const t = useT();
   const { cast, busy } = useCast();
   const addFav = useAddFavorite();
 
@@ -65,7 +69,7 @@ export default function CastPage() {
 
   return (
     <>
-      <PageHeader title="Cast" subtitle="Trasmetti qualsiasi cosa sul tuo Chromecast" />
+      <PageHeader title={t("cast.title")} subtitle={t("cast.subtitle")} />
       <PageBody className="space-y-8 pt-2">
         <div className="space-y-4">
           <SmartInput
@@ -78,13 +82,19 @@ export default function CastPage() {
             onSubmit={(v) => setSubmitted(v)}
             loading={resolve.isFetching}
             autoFocus={false}
-            hint={needsSubmit ? "premi Invio per analizzare" : null}
+            hint={needsSubmit ? t("cast.pressEnter") : null}
           />
           <AnimatePresence mode="wait">
             {resolvable && resolve.isFetching && !resolve.data ? (
               <ResultSkeleton key="sk" />
             ) : resolvable && resolve.isError ? (
-              <ResolveErrorCard key="err" error={resolve.error} input={detected.value} />
+              <ResolveErrorCard
+                key="err"
+                error={resolve.error}
+                input={detected.value}
+                onRetry={() => void resolve.refetch()}
+                retrying={resolve.isFetching}
+              />
             ) : resolvable && resolve.data?.type === "media" ? (
               <MediaResultCard key={`m-${resolve.data.media.original_input}`} media={resolve.data.media} />
             ) : resolvable && resolve.data?.type === "playlist" ? (
@@ -94,17 +104,17 @@ export default function CastPage() {
           {!input && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Button variant="outline" size="lg" className="justify-start gap-2 rounded-xl" render={<Link href="/browser/" />} nativeButton={false}>
-                <Compass className="size-5 text-primary" /> Browser
+                <Compass className="size-5 text-primary" /> {t("nav.browser")}
               </Button>
               <Button variant="outline" size="lg" className="justify-start gap-2 rounded-xl" render={<Link href="/playlists/" />} nativeButton={false}>
-                <Sparkles className="size-5 text-primary" /> Playlist IPTV
+                <Sparkles className="size-5 text-primary" /> {t("cast.iptvPlaylists")}
               </Button>
             </div>
           )}
         </div>
 
         {(history.isLoading || (history.data?.length ?? 0) > 0) && (
-          <Section title="Recenti" icon={Clock} href="/library/?tab=history">
+          <Section title={t("cast.recent")} icon={Clock} href="/library/?tab=history">
             <div className="rounded-2xl border bg-card p-1">
               {history.isLoading
                 ? Array.from({ length: 3 }, (_, i) => <MediaRowSkeleton key={i} />)
@@ -112,7 +122,7 @@ export default function CastPage() {
                     <MediaRow
                       key={h.id}
                       title={h.title}
-                      subtitle={`${SOURCE_LABEL[h.source_kind]} · ${formatRelative(h.played_at)}`}
+                      subtitle={`${t(SOURCE_LABEL_KEY[h.source_kind])} · ${formatRelative(h.played_at)}`}
                       thumbnail={h.thumbnail}
                       disabled={busy}
                       onCast={() => cast({ input: h.input, kind: h.source_kind, title: h.title })}
@@ -127,7 +137,7 @@ export default function CastPage() {
         )}
 
         {(favorites.data?.length ?? 0) > 0 && (
-          <Section title="Preferiti" icon={Star} href="/library/?tab=favorites">
+          <Section title={t("cast.favorites")} icon={Star} href="/library/?tab=favorites">
             <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
               {favorites.data?.slice(0, 12).map((f) => (
                 <button

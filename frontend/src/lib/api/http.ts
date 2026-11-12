@@ -1,16 +1,20 @@
-import type { ApiErrorBody } from "./types";
+import type { ApiErrorBody, MessageParams } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
   readonly detail: string;
+  readonly reason: string | undefined;
+  readonly params: MessageParams | undefined;
 
-  constructor(status: number, detail: string, code?: string) {
+  constructor(status: number, detail: string, code?: string, reason?: string, params?: MessageParams) {
     super(detail);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.code = code;
+    this.reason = reason;
+    this.params = params;
   }
 
   static isCode(err: unknown, code: string): boolean {
@@ -42,17 +46,21 @@ function buildQuery(query?: Query): string {
 async function parseError(res: Response): Promise<ApiError> {
   let detail = res.statusText || `HTTP ${res.status}`;
   let code: string | undefined;
+  let reason: string | undefined;
+  let params: MessageParams | undefined;
   try {
     const body = (await res.json()) as Partial<ApiErrorBody> | { detail?: unknown };
     if (body && typeof body === "object") {
       if (typeof body.detail === "string") detail = body.detail;
-      else if (Array.isArray(body.detail)) detail = "Richiesta non valida";
+      else if (Array.isArray(body.detail)) detail = "Invalid request";
       if ("code" in body && typeof body.code === "string") code = body.code;
+      if ("reason" in body && typeof body.reason === "string") reason = body.reason;
+      if ("params" in body && body.params && typeof body.params === "object") params = body.params as MessageParams;
     }
   } catch {
     /* non-JSON error body */
   }
-  return new ApiError(res.status, detail, code);
+  return new ApiError(res.status, detail, code, reason, params);
 }
 
 /** Thin JSON-over-fetch client. All API classes share one instance. */
@@ -83,7 +91,7 @@ export class HttpClient {
       });
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") throw err;
-      throw new ApiError(0, "Server non raggiungibile", "network_error");
+      throw new ApiError(0, "Server unreachable", "network_error");
     }
     if (!res.ok) throw await parseError(res);
     if (res.status === 204) return undefined as T;

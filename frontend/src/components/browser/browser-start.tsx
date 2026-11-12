@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import type { BrowserSession } from "@/lib/api/types";
 import type { ViewportMode } from "@/lib/browser-session";
+import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { normalizeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export function BrowserStart({
   /** Focus the address field on mount (reached through "New session"). */
   autoFocus?: boolean;
 }) {
+  const t = useT();
   const [value, setValue] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -41,18 +43,18 @@ export function BrowserStart({
         <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-gradient-to-br from-primary to-indigo-700 text-white shadow-xl shadow-primary/30">
           <Compass className="size-8" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Browser</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("nav.browser")}</h1>
         <p className="text-sm text-muted-foreground">
-          Apri una pagina sul server, avvia il video e trasmettilo: gli stream vengono rilevati automaticamente.
+          {t("browser.intro")}
         </p>
       </div>
       <form onSubmit={submit} className="space-y-3">
         <input
-          aria-label="Indirizzo da aprire"
+          aria-label={t("browser.addressToOpen")}
           autoFocus={autoFocus}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Cerca o inserisci un indirizzo"
+          placeholder={t("browser.addressPlaceholder")}
           inputMode="url"
           enterKeyHint="go"
           autoCapitalize="off"
@@ -61,11 +63,11 @@ export function BrowserStart({
           className="h-13 w-full rounded-2xl border bg-card px-4 text-base shadow-sm outline-none focus:border-primary/60 focus:ring-4 focus:ring-primary/15"
         />
         <div className="flex gap-2">
-          <div role="radiogroup" aria-label="Modalità" className="grid flex-1 grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+          <div role="radiogroup" aria-label={t("browser.mode")} className="grid flex-1 grid-cols-2 gap-1 rounded-xl bg-muted p-1">
             {(
               [
-                ["mobile", Smartphone, "Mobile"],
-                ["desktop", Monitor, "Desktop"],
+                ["mobile", Smartphone, t("browser.mobile")],
+                ["desktop", Monitor, t("browser.desktop")],
               ] as const
             ).map(([m, Icon, label]) => (
               <button
@@ -84,13 +86,13 @@ export function BrowserStart({
             ))}
           </div>
           <Button type="submit" size="lg" disabled={!value.trim() || busy} className="rounded-xl px-6">
-            Apri
+            {t("common.open")}
           </Button>
         </div>
       </form>
       {sessions.length > 0 && (
         <section className="space-y-2">
-          <h2 className="px-1 text-sm font-semibold text-muted-foreground">Sessioni aperte</h2>
+          <h2 className="px-1 text-sm font-semibold text-muted-foreground">{t("browser.openSessions")}</h2>
           <ul className="space-y-2">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center gap-1 rounded-2xl border bg-card">
@@ -99,11 +101,11 @@ export function BrowserStart({
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{s.title || hostOf(s.url)}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {hostOf(s.url)} · {s.captured.length} stream
+                      {hostOf(s.url)} · {t.plural("browser.streamCount", s.captured.length)}
                     </span>
                   </span>
                 </button>
-                <Button variant="ghost" size="icon" aria-label={`Chiudi ${hostOf(s.url)}`} onClick={() => onCloseSession(s)} className="mr-1">
+                <Button variant="ghost" size="icon" aria-label={t("common.closeName", { name: hostOf(s.url) })} onClick={() => onCloseSession(s)} className="mr-1">
                   <X className="size-4" />
                 </Button>
               </li>

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import socket
 import threading
 import time
 import uuid as uuidlib
@@ -40,6 +41,18 @@ SESSION_OVER = ("DISCONNECTED",)
 # several minutes) before it gives up and the session is dropped.
 CONNECT_TRIES = 2
 RECONNECT_TRIES = 60
+# Device added by IP: a TCP check on host:port first, so a wrong/unreachable IP fails in
+# seconds (pychromecast would spend ~30 s in get_cast_type, then 2 x CONNECT_TIMEOUT), then
+# its eureka_info for the real name/model (mDNS would provide them, but it may not work).
+PORT_CHECK_TIMEOUT = 3.0
+DEVICE_INFO_TIMEOUT = 4.0
+# pychromecast's reconnect loop backs off exponentially per service (5, 10, 20, 40, 80, 160 s
+# between attempts), so after a reboot (~60-90 s) the session would only come back minutes
+# later. While it is not connected, the driver probes the port itself every WATCH_INTERVAL
+# (after WATCH_GRACE, leaving the quick first retries to pychromecast) and opens a fresh
+# connection as soon as the device answers.
+WATCH_GRACE = 10.0
+WATCH_INTERVAL = 5.0
 LOAD_ERRORS = ("LOAD_FAILED", "LOAD_CANCELLED", "INVALID_REQUEST", "INVALID_PLAYER_STATE", "ERROR")
 
 
@@ -53,6 +66,45 @@ def _safe_disconnect(cast: Any, timeout: float) -> None:
         cast.disconnect(timeout=timeout)
     except Exception:  # pragma: no cover
         log.debug("disconnect failed", exc_info=True)
+
+
+def _port_open(host: str, port: int, timeout: float) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _manual_cast_info(host: str, port: int, name: str | None, model: str | None) -> Any:
+    """pychromecast CastInfo for a device added by IP (blocking).
+
+    Raises CastError when nothing listens on ``host:port``. Name, model and uuid come
+    from the device's eureka_info when it answers; ``cast_type`` is always set so the
+    Chromecast constructor doesn't run its own (30 s timeout) cast type probe.
+    """
+    from pychromecast import dial
+    from pychromecast.models import CastInfo, HostServiceInfo
+
+    if not _port_open(host, port, PORT_CHECK_TIMEOUT):
+        raise CastError(f"No Chromecast answering on {host}:{port}")
+    services = {HostServiceInfo(host, port)}
+    info = dial.get_device_info(host, services=services, timeout=DEVICE_INFO_TIMEOUT)
+    if info is not None:
+        if info.friendly_name and info.friendly_name != "Unknown Chromecast":
+            name = info.friendly_name
+        if info.model_name and info.model_name != "Unknown model name":
+            model = info.model_name
+    return CastInfo(
+        services,
+        (info.uuid if info is not None else None) or uuidlib.uuid4(),
+        model,
+        name,
+        host,
+        port,
+        info.cast_type if info is not None else "cast",
+        info.manufacturer if info is not None and info.manufacturer != "Unknown manufacturer" else None,
+    )
 
 
 def _fetch_media_status(cast: Any, timeout: float) -> Any:
@@ -111,18 +163,14 @@ class _Listener:
             self.driver._on_media_status(self.device_id, status)
 
     def load_media_failed(self, queue_item_id: int, error_code: int) -> None:
-        if self._current():
-            self.driver._threadsafe_emit("error", self.device_id, f"Load failed (error {error_code})")
+        # Every LOAD we send waits for its answer and raises CastError (→ 502 + toast):
+        # reporting it here as well would only duplicate the toast.
+        log.debug("LOAD failed on %s (item %s, error %s)", self.device_id, queue_item_id, error_code)
 
     # ConnectionStatusListener
     def new_connection_status(self, status: Any) -> None:
         if self._current():
             self.driver._on_connection_status(self.device_id, self.cast, status)
-
-    # LaunchErrorListener
-    def new_launch_error(self, status: Any) -> None:
-        if self._current():
-            self.driver._threadsafe_emit("error", self.device_id, f"Launch error: {status}")
 
 
 class PyChromecastDriver:
@@ -145,6 +193,11 @@ class PyChromecastDriver:
         # Last CastInfo seen for every discovered id: a session must survive its mDNS
         # record going away (goodbye packet, TTL expiry on flaky Wi-Fi).
         self._known_info: dict[str, Any] = {}
+        # Reconnect watchdog per device (see WATCH_INTERVAL).
+        self._watchers: dict[str, asyncio.Task[None]] = {}
+        # (media session, tracks list, active ids list) last read from pychromecast's
+        # MediaStatus: it keeps both lists when a new media's status has no "tracks".
+        self._media_seen: dict[str, tuple[Any, Any, Any]] = {}
 
     # ------------------------------------------------------------ plumbing
     def set_listener(self, listener: DriverListener) -> None:
@@ -180,6 +233,10 @@ class PyChromecastDriver:
             log.exception("mDNS discovery could not start; manual devices still work")
 
     async def stop(self) -> None:
+        for task in self._watchers.values():
+            task.cancel()
+        self._watchers.clear()
+
         def _stop() -> None:
             for cast in list(self._casts.values()):
                 _safe_disconnect(cast, 2)
@@ -322,46 +379,51 @@ class PyChromecastDriver:
                 return  # another caller connected while we waited
             await self._connect(device_id)
 
-    async def _connect(self, device_id: str) -> None:
+    def _open(self, dev: Device, cast_info: Any) -> Any:
+        """Open a connected ``Chromecast`` for ``dev`` (blocking)."""
         import pychromecast
-        from pychromecast.controllers.media import DefaultMediaReceiverController
 
+        if cast_info is None:  # added by IP, not (or not yet) seen by mDNS
+            cast_info = _manual_cast_info(dev.host, dev.port, dev.name, dev.model)
+        cast = pychromecast.get_chromecast_from_cast_info(
+            cast_info, self._zconf, tries=CONNECT_TRIES, timeout=CONNECT_TIMEOUT
+        )
+        try:
+            cast.wait(timeout=CONNECT_TIMEOUT)
+        except Exception:
+            _safe_disconnect(cast, 0)
+            raise
+        # initialize_connection re-reads ``tries`` on every reconnect: give the
+        # reconnect phase (Wi-Fi blip, TV rebooting) far more attempts than the first connect.
+        with contextlib.suppress(Exception):
+            cast.socket_client.tries = RECONNECT_TRIES
+        return cast
+
+    async def _open_async(self, device_id: str) -> Any:
         dev = self.find_device(device_id)
         if dev is None:
             raise CastError(f"Unknown device {device_id}")
         cast_info = self._cast_info_for(device_id)
-
-        def _connect() -> Any:
-            if cast_info is not None:
-                cast = pychromecast.get_chromecast_from_cast_info(
-                    cast_info, self._zconf, tries=CONNECT_TRIES, timeout=CONNECT_TIMEOUT
-                )
-            else:
-                cast = pychromecast.get_chromecast_from_host(
-                    (dev.host, dev.port, uuidlib.uuid4(), dev.model, dev.name),
-                    tries=CONNECT_TRIES,
-                    timeout=CONNECT_TIMEOUT,
-                )
-            try:
-                cast.wait(timeout=CONNECT_TIMEOUT)
-            except Exception:
-                _safe_disconnect(cast, 0)
-                raise
-            # initialize_connection re-reads ``tries`` on every reconnect: give the
-            # reconnect phase (Wi-Fi blip, TV rebooting) far more attempts than the first connect.
-            with contextlib.suppress(Exception):
-                cast.socket_client.tries = RECONNECT_TRIES
-            return cast
-
         try:
-            cast = await asyncio.to_thread(_connect)
+            return await asyncio.to_thread(self._open, dev, cast_info)
+        except CastError:
+            raise
         except Exception as exc:
             raise CastError(f"Could not connect: {exc}") from exc
+
+    async def _connect(self, device_id: str) -> None:
+        cast = await self._open_async(device_id)
+        await self._attach(device_id, cast)
+
+    async def _attach(self, device_id: str, cast: Any) -> None:
+        """Make ``cast`` the device's session (replacing any previous one)."""
+        from pychromecast.controllers.media import DefaultMediaReceiverController
 
         st = DeviceStatus(connected=True)
         self._apply_cast_status(st, cast.status)
         self._status[device_id] = st
         self._casts[device_id] = cast
+        self._media_seen.pop(device_id, None)
         dmr = DefaultMediaReceiverController()
         cast.register_handler(dmr)
         self._dmr[device_id] = dmr
@@ -369,17 +431,20 @@ class PyChromecastDriver:
         cast.register_status_listener(listener)
         cast.media_controller.register_status_listener(listener)
         cast.register_connection_listener(listener)
-        try:
-            cast.register_launch_error_listener(listener)
-        except Exception:  # pragma: no cover
-            pass
+        # No launch-error listener on purpose: pychromecast retries a LAUNCH_CANCELLED
+        # (another app still closing) only when none is registered, and a launch that
+        # really fails is already reported by the LOAD callback (sent=False → CastError).
         if device_id in self._manual:
             m = self._manual[device_id]
+            renamed = m.name.startswith("Chromecast @")  # default name: take the device's own
             self._manual[device_id] = m.model_copy(
                 update={
                     "online": True,
                     "model": cast.model_name or m.model,
-                    "name": m.name if not m.name.startswith("Chromecast @") else (cast.name or m.name),
+                    "name": (cast.name or m.name) if renamed else m.name,
+                    "cast_type": getattr(cast, "cast_type", None) or m.cast_type,
+                    "manufacturer": getattr(getattr(cast, "cast_info", None), "manufacturer", None)
+                    or m.manufacturer,
                 }
             )
             self._emit("devices")
@@ -390,7 +455,58 @@ class PyChromecastDriver:
             self._on_media_status(device_id, ms)
         self._emit("status", device_id)
 
+    # ------------------------------------------------------------ reconnect watchdog
+    def _watch(self, device_id: str, cast: Any) -> None:
+        """Start the reconnect watchdog for a session that lost its connection (loop thread)."""
+        if self._casts.get(device_id) is not cast:
+            return
+        task = self._watchers.get(device_id)
+        if task is not None and not task.done():
+            return
+        self._watchers[device_id] = asyncio.ensure_future(self._reconnect_watch(device_id, cast))
+
+    def _stop_watch(self, device_id: str) -> None:
+        task = self._watchers.pop(device_id, None)
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+
+    def _waiting_reconnect(self, device_id: str, cast: Any) -> bool:
+        st = self._status.get(device_id)
+        return self._casts.get(device_id) is cast and st is not None and not st.connected
+
+    async def _reconnect_watch(self, device_id: str, cast: Any) -> None:
+        try:
+            await asyncio.sleep(WATCH_GRACE)
+            while self._waiting_reconnect(device_id, cast):
+                dev = self.find_device(device_id)
+                back = dev is not None and await asyncio.to_thread(_port_open, dev.host, dev.port, PORT_CHECK_TIMEOUT)
+                if back and await self._replace_cast(device_id, cast):
+                    return
+                await asyncio.sleep(WATCH_INTERVAL)
+        finally:
+            if self._watchers.get(device_id) is asyncio.current_task():
+                self._watchers.pop(device_id, None)
+
+    async def _replace_cast(self, device_id: str, old: Any) -> bool:
+        """Swap a reconnecting session for a fresh connection. True when no longer needed."""
+        async with self._conn_lock(device_id):
+            if not self._waiting_reconnect(device_id, old):
+                return True
+            try:
+                cast = await self._open_async(device_id)
+            except CastError as exc:
+                log.debug("reconnect to %s failed: %s", device_id, exc)
+                return False
+            if not self._waiting_reconnect(device_id, old):  # pychromecast made it meanwhile
+                await asyncio.to_thread(_safe_disconnect, cast, 0)
+                return True
+            log.info("Chromecast %s is back: replacing the reconnecting session", device_id)
+            await self._attach(device_id, cast)  # the old cast's listener is now stale
+            await asyncio.to_thread(_safe_disconnect, old, 0)
+            return True
+
     async def disconnect(self, device_id: str) -> None:
+        self._stop_watch(device_id)
         async with self._conn_lock(device_id):
             cast = self._casts.pop(device_id, None)
             self._dmr.pop(device_id, None)
@@ -418,6 +534,7 @@ class PyChromecastDriver:
         """pychromecast gave up reconnecting: forget the session (event loop thread)."""
         if self._casts.get(device_id) is not cast:
             return
+        self._stop_watch(device_id)
         self._casts.pop(device_id, None)
         self._dmr.pop(device_id, None)
         self._status.pop(device_id, None)
@@ -450,6 +567,8 @@ class PyChromecastDriver:
         if value in SESSION_OVER and self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._drop_session, device_id, cast)
             return
+        if not st.connected and self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._watch, device_id, cast)
         # LOST / CONNECTING / FAILED / FAILED_RESOLVE: keep the session (and the player,
         # connected=False) while pychromecast keeps retrying
         self._threadsafe_emit("status", device_id)
@@ -471,6 +590,7 @@ class PyChromecastDriver:
         st.duration = float(ms.duration) if ms.duration and not ms.stream_type_is_live else None
         st.seekable = bool(ms.supports_seek) and st.duration is not None
         st.status_at = time.time()
+        self._forget_stale_tracks(device_id, ms)
         tracks = []
         for t in ms.subtitle_tracks or []:
             try:
@@ -494,6 +614,21 @@ class PyChromecastDriver:
             # accepted LOAD that then failed (dead/expired URL): the service advances the queue
             self._threadsafe_emit("finished", device_id, "ERROR")
 
+    def _forget_stale_tracks(self, device_id: str, ms: Any) -> None:
+        """pychromecast's MediaStatus.update() keeps ``tracks``/``activeTrackIds`` when a
+        status lacks them, so a new media without tracks would inherit the previous one's
+        (and EDIT_TRACKS_INFO would send ids that don't exist). A new media session still
+        holding the very same list objects did not report any: clear them on the status
+        object itself, so later updates of this session start from empty lists too."""
+        session = (getattr(ms, "media_session_id", None), ms.content_id)
+        prev = self._media_seen.get(device_id)
+        if prev is not None and prev[0] != session:
+            if prev[1] and ms.subtitle_tracks is prev[1]:
+                ms.subtitle_tracks = []
+            if prev[2] and ms.current_subtitle_tracks is prev[2]:
+                ms.current_subtitle_tracks = []
+        self._media_seen[device_id] = (session, ms.subtitle_tracks, ms.current_subtitle_tracks)
+
     # ------------------------------------------------------------ media commands
     @staticmethod
     def build_play_kwargs(media: MediaRequest) -> dict[str, Any]:
@@ -509,10 +644,13 @@ class PyChromecastDriver:
         if media.current_time:
             kwargs["current_time"] = media.current_time
         media_info: dict[str, Any] = {}
-        if media.hls_segment_format and not media.is_image:
-            # The Default Media Receiver assumes MPEG-TS segments for HLS otherwise
-            media_info["hlsSegmentFormat"] = media.hls_segment_format
-            if media.hls_segment_format == "fmp4":
+        if not media.is_image:
+            # The Default Media Receiver assumes MPEG-TS segments for HLS otherwise.
+            # hlsSegmentFormat is the audio's container, hlsVideoSegmentFormat the video's:
+            # fMP4 video may come with a packed (aac/...) audio rendition.
+            if media.hls_segment_format:
+                media_info["hlsSegmentFormat"] = media.hls_segment_format
+            if media.hls_video_segment_format == "fmp4" or media.hls_segment_format == "fmp4":
                 media_info["hlsVideoSegmentFormat"] = "fmp4"
         if media.subtitles:
             media_info |= {

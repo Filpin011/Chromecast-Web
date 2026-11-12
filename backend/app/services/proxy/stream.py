@@ -13,7 +13,7 @@ from fastapi.responses import Response, StreamingResponse
 from app.errors import AppError
 from app.services.net import DESKTOP_UA
 from app.services.proxy import dash
-from app.services.proxy.hls import decode_url, rewrite_playlist, url_filename
+from app.services.proxy.hls import decode_url, filter_variants, is_master_playlist, rewrite_playlist, url_filename
 from app.services.proxy.tokens import ProxyTarget, TokenRegistry
 
 log = logging.getLogger(__name__)
@@ -181,6 +181,8 @@ class ProxyService:
 
     def _playlist_response(self, body: bytes, final_url: str, target: ProxyTarget) -> Response:
         text = body.decode("utf-8", errors="replace")
+        if is_master_playlist(text):
+            text = filter_variants(text)  # one container for the whole LOAD (see filter_variants)
         rewritten = rewrite_playlist(text, final_url, target.token, self.prefix)
         return Response(
             rewritten,

@@ -14,11 +14,11 @@ describe("VideoPreview", () => {
 
       fireEvent.error(video);
       const alert = screen.getByRole("alert");
-      expect(alert).toHaveTextContent("Anteprima non disponibile");
+      expect(alert).toHaveTextContent("Preview unavailable");
       expect(video.controls).toBe(false);
       expect(video.className).toContain("invisible");
 
-      fireEvent.click(screen.getByRole("button", { name: /Riprova/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
       act(() => vi.runOnlyPendingTimers());
       expect(load).toHaveBeenCalled(); // old source torn down
       expect(video.getAttribute("src")).toBe("http://cdn.example/clip.mp4");
@@ -36,8 +36,8 @@ describe("VideoPreview", () => {
     try {
       render(<VideoPreview src="http://cdn.example/live.mpd" controls />);
       act(() => vi.runOnlyPendingTimers());
-      expect(screen.getByRole("alert")).toHaveTextContent("non disponibile per questo formato");
-      expect(screen.queryByRole("button", { name: /Riprova/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("No preview for this format");
+      expect(screen.queryByRole("button", { name: /Retry/ })).not.toBeInTheDocument();
       expect((screen.getByTestId("video-preview") as HTMLVideoElement).controls).toBe(false);
     } finally {
       vi.useRealTimers();

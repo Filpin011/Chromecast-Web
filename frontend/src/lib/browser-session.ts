@@ -42,6 +42,15 @@ export function fitViewport(mode: ViewportMode, screen: ScreenInfo | null): View
   };
 }
 
+/**
+ * Mode for new sessions: the saved choice, else desktop on wide (tablet/desktop layout) screens, where a
+ * phone-sized page would sit letterboxed in a large empty area, and mobile on phones.
+ */
+export function initialViewportMode(saved: string | null, screen: ScreenInfo | null): ViewportMode {
+  if (saved === "desktop" || saved === "mobile") return saved;
+  return screen && screen.width > PHONE_LAYOUT_MAX ? "desktop" : "mobile";
+}
+
 /** True when the session's viewport no longer matches the space available (e.g. after rotating the phone). */
 export function viewportMismatch(current: Viewport, fitted: Viewport, tolerance = 0.12): boolean {
   const off = (a: number, b: number) => Math.abs(a - b) / Math.max(1, b);

@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { useIsDesktop } from "@/hooks/use-media-query";
+import { useT } from "@/i18n";
 import { DEVICE_SHEET_TITLE, useUiStore } from "@/stores/ui-store";
 import { DevicePickerContent } from "./device-picker";
 
@@ -13,7 +14,8 @@ export function DevicePickerSheet() {
   // opened by a cast (requestDevice): just choose the target, the cast itself connects
   const forCast = useUiStore((s) => s.pendingDevice !== null);
   const isDesktop = useIsDesktop();
-  const title = DEVICE_SHEET_TITLE;
+  const t = useT();
+  const title = t(DEVICE_SHEET_TITLE);
 
   const onPicked = (id: string) => {
     useUiStore.getState().resolveDevice(id);

@@ -1,6 +1,10 @@
+"use client";
+
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export function LiveBadge({ className, dim = false }: { className?: string; dim?: boolean }) {
+  const t = useT();
   return (
     <span
       className={cn(
@@ -10,7 +14,7 @@ export function LiveBadge({ className, dim = false }: { className?: string; dim?
       )}
     >
       <span className={cn("size-1.5 rounded-full", dim ? "bg-muted-foreground" : "animate-pulse bg-white")} />
-      Live
+      {t("player.live")}
     </span>
   );
 }

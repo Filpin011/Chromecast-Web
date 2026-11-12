@@ -47,7 +47,13 @@ def test_toast_on_driver_error(client):
         for _ in range(20):
             msg = ws.receive_json()
             if msg["type"] == "toast":
-                assert msg == {"type": "toast", "level": "error", "message": "boom"}
+                assert msg == {
+                    "type": "toast",
+                    "level": "error",
+                    "message": "boom",
+                    "code": "cast_error",
+                    "params": {"detail": "boom"},
+                }
                 break
         else:
             raise AssertionError("no toast")

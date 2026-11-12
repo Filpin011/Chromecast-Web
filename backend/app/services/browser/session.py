@@ -142,6 +142,8 @@ class RemoteBrowserSession:
         self._subscribers: set[ViewerQueue] = set()
         self._last_frame: dict[str, Any] | None = None
         self._screencast_ok = False
+        # > 0 while a thumbnail screenshot runs: Chromium then emits screencast frames sized like the clip
+        self._capturing = 0
         self._shot_task: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
         self._seen_urls: set[str] = set()  # sniff.stream_key() of every URL already handled
@@ -253,21 +255,31 @@ class RemoteBrowserSession:
         try:
             self.cdp = await self.context.new_cdp_session(self.page)
             self.cdp.on("Page.screencastFrame", self._on_frame)
-            await self.cdp.send(
-                "Page.startScreencast",
-                {
-                    "format": "jpeg",
-                    "quality": 60,
-                    "maxWidth": self.viewport.width,
-                    "maxHeight": self.viewport.height,
-                    "everyNthFrame": 1,
-                },
-            )
+            await self.cdp.send("Page.startScreencast", self._screencast_params())
             self._screencast_ok = True
         except Exception as exc:
             log.info("CDP screencast unavailable (%s); falling back to screenshots", exc)
             self.cdp = None
             self._shot_task = asyncio.create_task(self._screenshot_loop())
+
+    def _screencast_params(self) -> dict[str, Any]:
+        return {
+            "format": "jpeg",
+            "quality": 60,
+            "maxWidth": self.viewport.width,
+            "maxHeight": self.viewport.height,
+            "everyNthFrame": 1,
+        }
+
+    async def _refresh_screencast(self) -> None:
+        """Restart the screencast so it emits a fresh full-viewport frame right away (a static page
+        sends no new frame on its own, and the viewers would keep the last one)."""
+        cdp = self.cdp
+        if cdp is None or not self._screencast_ok:
+            return
+        with contextlib.suppress(Exception):
+            await cdp.send("Page.stopScreencast")
+            await cdp.send("Page.startScreencast", self._screencast_params())
 
     async def _stop_screencast(self) -> None:
         if self.cdp is not None:
@@ -290,9 +302,15 @@ class RemoteBrowserSession:
             "width": int(meta.get("deviceWidth") or self.viewport.width),
             "height": int(meta.get("deviceHeight") or self.viewport.height),
         }
+        cdp = self.cdp
+        if self._capturing and (frame["width"], frame["height"]) != (self.viewport.width, self.viewport.height):
+            # artefact of a clipped page.screenshot() (the thumbnail): only the clip, letterboxed by the
+            # viewers; _thumbnail() restarts the screencast afterwards for a fresh full frame
+            if cdp is not None and "sessionId" in params:
+                self._spawn(self._ack(cdp, params["sessionId"]))
+            return
         self._last_frame = frame
         self._broadcast(frame)
-        cdp = self.cdp
         if cdp is not None and "sessionId" in params:
             self._spawn(self._ack(cdp, params["sessionId"]))
 
@@ -763,6 +781,15 @@ class RemoteBrowserSession:
             self._broadcast_session()
 
     async def _thumbnail(self) -> tuple[str | None, int | None, int | None]:
+        self._capturing += 1
+        try:
+            return await self._capture_thumbnail()
+        finally:
+            self._capturing -= 1
+            if not self._capturing:
+                await self._refresh_screencast()
+
+    async def _capture_thumbnail(self) -> tuple[str | None, int | None, int | None]:
         page = self.page
         vw = vh = None
         data: bytes | None = None
@@ -848,6 +875,7 @@ class BrowserManager:
                     429,
                     f"Too many browser sessions (max {self.max_sessions}): close one first",
                     "browser_limit",
+                    params={"max": self.max_sessions},
                 )
             vp = viewport or Viewport()
             try:

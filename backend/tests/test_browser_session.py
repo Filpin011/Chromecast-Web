@@ -259,6 +259,35 @@ async def test_thumbnail_fallback_is_capped():
     assert (await s._thumbnail())[0] == "data:image/jpeg;base64,QUJD"
 
 
+async def test_thumbnail_drops_clip_sized_screencast_frames_and_refreshes():
+    """A clipped page.screenshot() makes Chromium emit screencast frames sized like the clip: viewers
+    would show them letterboxed (and keep them on a static page). They are dropped and the screencast is
+    restarted for a fresh full-viewport frame."""
+    s = await manager(site()).create(PAGE, Viewport(width=390, height=700))
+    await settle()
+    cdp = s.cdp
+    page = s.page
+    good = {"type": "frame", "data": "R09PRA==", "width": 390, "height": 700}
+    s._last_frame = good
+
+    async def shot_emitting_clip_frame(**_):
+        s._on_frame({"data": "Q0xJUA==", "sessionId": 7, "metadata": {"deviceWidth": 390, "deviceHeight": 219}})
+        return b"jpeg"
+
+    page.screenshot = shot_emitting_clip_frame
+    page.main_frame.evaluate_result = {"x": 0, "y": 0, "width": 390, "height": 219, "vw": None, "vh": None}
+    sent_before = len(cdp.sent)
+    assert (await s._thumbnail())[0] == "data:image/jpeg;base64," + "anBlZw=="
+    assert s._last_frame is good
+    assert [m for m, _ in cdp.sent[sent_before:] if m != "Page.screencastFrameAck"] == [
+        "Page.stopScreencast",
+        "Page.startScreencast",
+    ]
+    # outside a capture, frames of any size are kept (e.g. after a viewport change)
+    s._on_frame({"data": "TkVX", "metadata": {"deviceWidth": 1280, "deviceHeight": 720}})
+    assert s._last_frame["data"] == "TkVX"
+
+
 def test_viewer_queue_never_drops_messages_for_frames():
     from app.services.browser.session import ViewerQueue
 

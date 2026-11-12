@@ -4,6 +4,7 @@ import { CornerDownLeft, Delete, Send } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import type { BrowserClientMsg } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /** Text bar that drives the remote page's keyboard (opens the phone's virtual keyboard). */
@@ -16,6 +17,7 @@ export function KeyboardBar({
   className?: string;
   autoFocus?: boolean;
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -25,15 +27,15 @@ export function KeyboardBar({
   };
   return (
     <form onSubmit={submit} className={cn("flex items-center gap-1.5 border-t bg-background px-2 py-1.5", className)}>
-      <Button type="button" variant="ghost" size="icon" aria-label="Cancella carattere" onClick={() => send({ type: "key", key: "Backspace" })}>
+      <Button type="button" variant="ghost" size="icon" aria-label={t("keyboard.backspace")} onClick={() => send({ type: "key", key: "Backspace" })}>
         <Delete className="size-4" />
       </Button>
       <input
-        aria-label="Testo da inviare alla pagina"
+        aria-label={t("keyboard.textLabel")}
         value={text}
         autoFocus={autoFocus}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Scrivi nella pagina…"
+        placeholder={t("keyboard.placeholder")}
         autoCapitalize="off"
         autoCorrect="off"
         enterKeyHint="send"
@@ -43,7 +45,7 @@ export function KeyboardBar({
         type="button"
         variant="ghost"
         size="icon"
-        aria-label="Scrivi senza invio"
+        aria-label={t("keyboard.typeNoEnter")}
         disabled={!text}
         onClick={() => {
           send({ type: "text", text });
@@ -52,7 +54,7 @@ export function KeyboardBar({
       >
         <Send className="size-4" />
       </Button>
-      <Button type="submit" size="icon" aria-label="Invio">
+      <Button type="submit" size="icon" aria-label={t("keyboard.enter")}>
         <CornerDownLeft className="size-4" />
       </Button>
     </form>

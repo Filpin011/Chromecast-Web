@@ -217,3 +217,53 @@ def test_restream_endpoint(client, tmp_path):
     assert client.get(f"/restream/{job.token}/seg_00000.ts").content == b"TScopy"
     assert client.get(f"/restream/{job.token}/missing.ts").status_code == 404
     assert client.get("/restream/nope/index.m3u8").status_code == 404
+
+
+SLOW_FFPROBE = """#!{py}
+import time
+time.sleep(30)
+print("h264")
+"""
+
+
+async def test_release_stops_ffmpeg_keeps_output_and_refuses_stale_restarts(tmp_path):
+    """The device switched channel: the upstream connection is freed right away (single-
+    connection IPTV accounts), and the old receiver's last playlist polls don't reopen it."""
+    m = RestreamManager(tmp_path / "rs", ffmpeg=fake_ffmpeg(tmp_path, False),
+                        ffprobe=fake_ffprobe(tmp_path, "h264"), idle_timeout=60)
+    job = m.register("http://iptv/live/u/p/1.ts")
+    await m.ensure_running(job)
+    await m.release(job)
+    assert not job.running and job.playlist.exists()
+    with pytest.raises(RuntimeError):
+        await m.ensure_running(job)
+    assert len(ffmpeg_calls(tmp_path)) == 1
+    # cast again: resumes the kept window
+    m.warm(job)
+    await asyncio.gather(*m._warming)
+    assert job.running
+    calls = ffmpeg_calls(tmp_path)
+    assert len(calls) == 2 and "append_list" in calls[1][calls[1].index("-hls_flags") + 1]
+    await m.shutdown()
+
+
+async def test_release_aborts_a_start_up_in_progress(tmp_path):
+    probe = tmp_path / "ffprobe"
+    probe.write_text(SLOW_FFPROBE.format(py=sys.executable))
+    probe.chmod(probe.stat().st_mode | stat.S_IEXEC)
+    m = RestreamManager(tmp_path / "rs", ffmpeg=fake_ffmpeg(tmp_path, False), ffprobe=str(probe))
+    job = m.register("http://iptv/live/u/p/1.ts")
+    start = asyncio.create_task(m.ensure_running(job))
+    for _ in range(200):
+        if job.probe_proc is not None:
+            break
+        await asyncio.sleep(0.01)
+    assert job.probe_proc is not None
+    await m.release(job)
+    with pytest.raises(RuntimeError, match="no longer loaded"):
+        await asyncio.wait_for(start, 5)
+    assert job.video_codec is None  # the killed probe is not cached as "unknown"
+    assert not job.running and ffmpeg_calls(tmp_path) == []
+    # resolved again → registered again → usable
+    assert m.register("http://iptv/live/u/p/1.ts") is job and not job.released
+    await m.shutdown()

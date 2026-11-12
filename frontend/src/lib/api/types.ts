@@ -151,9 +151,16 @@ export interface AppState {
   version: number;
 }
 
+/** Interpolation values that come with a stable error / toast code. */
+export type MessageParams = Record<string, string | number>;
+
 export interface ApiErrorBody {
+  /** English, technical: shown only when the UI has no translation for code/reason. */
   detail: string;
   code?: string;
+  /** Finer-grained stable code (e.g. "connect_failed" for a resolve_failed). */
+  reason?: string;
+  params?: MessageParams;
 }
 
 export interface Health {
@@ -309,7 +316,8 @@ export type ToastLevel = "info" | "success" | "error";
 
 export type ServerMessage =
   | { type: "state"; data: AppState }
-  | { type: "toast"; level: ToastLevel; message: string }
+  /** `message` is the English fallback; `code` + `params` are translated by the UI when known. */
+  | { type: "toast"; level: ToastLevel; message: string; code?: string; params?: MessageParams }
   | { type: "pong" };
 
 export type ClientMessage = { type: "ping" };

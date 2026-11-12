@@ -48,10 +48,14 @@ async def restream(token: str, name: str, s: Services = Depends(services)) -> Re
 
 
 @router.api_route("/local/{path:path}", methods=["GET", "HEAD"])
-async def local_file(path: str, s: Services = Depends(services)) -> Response:
+async def local_file(path: str, request: Request, s: Services = Depends(services)) -> Response:
     p = localres.safe_path(s.config.media_root, path)
     if not p.is_file():
         raise AppError(404, "File not found", "not_found")
+    if p.suffix.lower() == ".srt" and request.query_params.get("as") == "vtt":
+        # Sidecar SubRip subtitles are cast as WebVTT text tracks.
+        vtt = localres.srt_to_vtt(localres.read_text_any(p))
+        return Response(vtt, media_type="text/vtt; charset=utf-8", headers=CORS)
     return FileResponse(p, media_type=localres.guess_mime(p.name) or "application/octet-stream", headers=CORS)
 
 

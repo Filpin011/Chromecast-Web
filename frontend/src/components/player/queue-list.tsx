@@ -8,6 +8,7 @@ import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { QueueItem } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { errorMessage } from "@/lib/query";
 import { useAppStore } from "@/stores/app-store";
@@ -23,6 +24,7 @@ function QueueRow({
   onRemove: () => void;
   onDragEnd: () => void;
 }) {
+  const t = useT();
   const controls = useDragControls();
   return (
     <Reorder.Item
@@ -35,7 +37,7 @@ function QueueRow({
     >
       <button
         type="button"
-        aria-label={`Trascina ${item.title}`}
+        aria-label={t("queue.drag", { name: item.title })}
         onPointerDown={(e) => {
           haptic(4);
           controls.start(e);
@@ -49,7 +51,7 @@ function QueueRow({
         <p className="truncate text-sm font-medium">{item.title}</p>
         <p className="text-xs text-muted-foreground">#{index + 1}</p>
       </div>
-      <Button variant="ghost" size="icon" aria-label={`Rimuovi ${item.title}`} onClick={onRemove}>
+      <Button variant="ghost" size="icon" aria-label={t("devices.removeName", { name: item.title })} onClick={onRemove}>
         <X className="size-4" />
       </Button>
     </Reorder.Item>
@@ -72,6 +74,7 @@ export function reconcileOrder(order: readonly QueueItem[] | null, queue: readon
 
 /** Server-side play queue with drag-to-reorder and remove. */
 export function QueueList({ deviceId, queue }: { deviceId: string; queue: QueueItem[] }) {
+  const t = useT();
   const [order, setOrder] = useState<QueueItem[] | null>(null);
   const items = reconcileOrder(order, queue);
 
@@ -86,7 +89,7 @@ export function QueueList({ deviceId, queue }: { deviceId: string; queue: QueueI
       const p = await api.player.reorderQueue(deviceId, ids);
       useAppStore.getState().applyPlayer(p);
     } catch (e) {
-      toast.error(errorMessage(e, "Riordino non riuscito"));
+      toast.error(errorMessage(e, t("queue.reorderFailed")));
     } finally {
       setOrder(null);
     }
@@ -98,7 +101,7 @@ export function QueueList({ deviceId, queue }: { deviceId: string; queue: QueueI
       const p = await api.player.removeFromQueue(deviceId, id);
       useAppStore.getState().applyPlayer(p);
     } catch (e) {
-      toast.error(errorMessage(e, "Rimozione non riuscita"));
+      toast.error(errorMessage(e, t("queue.removeFailed")));
     }
   };
 
@@ -106,13 +109,13 @@ export function QueueList({ deviceId, queue }: { deviceId: string; queue: QueueI
     return (
       <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
         <ListMusic className="size-6" />
-        La coda è vuota. Usa “Aggiungi alla coda” da qualsiasi contenuto.
+        {t("queue.empty")}
       </div>
     );
   }
 
   return (
-    <Reorder.Group axis="y" values={items} onReorder={setOrder} className="space-y-2" aria-label="Coda">
+    <Reorder.Group axis="y" values={items} onReorder={setOrder} className="space-y-2" aria-label={t("common.queue")}>
       {items.map((item, i) => (
         <QueueRow key={item.id} item={item} index={i} onRemove={() => remove(item.id)} onDragEnd={commitOrder} />
       ))}

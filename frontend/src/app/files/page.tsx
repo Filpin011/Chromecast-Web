@@ -10,6 +10,7 @@ import { useLocalListing } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
 import { ApiError } from "@/lib/api";
 import type { LocalEntry } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { formatBytes } from "@/lib/format";
 
 function iconFor(e: LocalEntry) {
@@ -20,6 +21,7 @@ function iconFor(e: LocalEntry) {
 }
 
 function FilesInner() {
+  const t = useT();
   const router = useRouter();
   const path = useSearchParams().get("path") ?? "";
   const listing = useLocalListing(path);
@@ -30,19 +32,19 @@ function FilesInner() {
 
   return (
     <>
-      <PageHeader title="File locali" subtitle="Media sul server" />
+      <PageHeader title={t("nav.files")} subtitle={t("files.subtitle")} />
       <PageBody className="space-y-3 pt-2">
         {disabled ? (
           <EmptyState
             icon={HardDrive}
-            title="File locali non attivi"
-            description="Imposta MEDIA_ROOT sul server per sfogliare e trasmettere i tuoi file."
+            title={t("files.disabled")}
+            description={t("files.disabledHint")}
           />
         ) : (
           <>
-            <nav aria-label="Percorso" className="-mx-4 flex items-center gap-1 overflow-x-auto px-4 text-sm no-scrollbar">
+            <nav aria-label={t("files.path")} className="-mx-4 flex items-center gap-1 overflow-x-auto px-4 text-sm no-scrollbar">
               <button type="button" onClick={() => go("")} className="h-9 shrink-0 rounded-lg px-2 font-medium text-primary">
-                Media
+                {t("files.root")}
               </button>
               {crumbs.map((c, i) => (
                 <span key={i} className="flex shrink-0 items-center gap-1">
@@ -62,9 +64,9 @@ function FilesInner() {
               {listing.isLoading ? (
                 Array.from({ length: 6 }, (_, i) => <MediaRowSkeleton key={i} />)
               ) : listing.isError ? (
-                <EmptyState icon={FolderX} title="Cartella non accessibile" />
+                <EmptyState icon={FolderX} title={t("files.unreadable")} />
               ) : !listing.data?.entries.length ? (
-                <EmptyState icon={Folder} title="Cartella vuota" />
+                <EmptyState icon={Folder} title={t("files.empty")} />
               ) : (
                 listing.data.entries.map((e) => {
                   const Icon = iconFor(e);
@@ -81,7 +83,7 @@ function FilesInner() {
                       {e.is_dir ? (
                         <ChevronRight className="size-4 text-muted-foreground" />
                       ) : (
-                        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(e.size)}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(e.size, t.locale)}</span>
                       )}
                     </button>
                   );

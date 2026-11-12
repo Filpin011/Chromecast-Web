@@ -1,9 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdblockButton, blockedBadge } from "@/components/browser/adblock-button";
 import { PopupPrompt } from "@/components/browser/popup-prompt";
-import { Api } from "@/lib/api";
+import { AdblockSettings } from "@/components/settings/adblock-settings";
+import { useLocaleStore } from "@/i18n";
+import { Api, api } from "@/lib/api";
+import { renderWithProviders } from "./render";
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -41,17 +44,17 @@ describe("AdblockButton", () => {
       <AdblockButton url="https://www.sport.example.com/live" enabled blocked={12} onToggle={onToggle} onStopMedia={onStop} />,
     );
     expect(screen.getByTestId("blocked-badge")).toHaveTextContent("12");
-    await userEvent.click(screen.getByRole("button", { name: /Blocco pubblicità attivo, 12/ }));
-    expect(await screen.findByText("Blocco pubblicità attivo su questo sito")).toBeInTheDocument();
-    expect(screen.getByText("12 richieste bloccate su questa pagina")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Disattiva il blocco su questo sito" }));
+    await userEvent.click(screen.getByRole("button", { name: /Ad blocking on, 12 requests blocked/ }));
+    expect(await screen.findByText("Ad blocking on for this site")).toBeInTheDocument();
+    expect(screen.getByText("12 requests blocked on this page")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Turn off blocking on this site" }));
     expect(onToggle).toHaveBeenCalledWith(false);
   });
 
   it("hides the badge when blocking is off for the site", () => {
     render(<AdblockButton url="https://a.example/" enabled={false} blocked={5} onToggle={vi.fn()} onStopMedia={vi.fn()} />);
     expect(screen.queryByTestId("blocked-badge")).toBeNull();
-    expect(screen.getByRole("button", { name: "Blocco pubblicità disattivato" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ad blocking off" })).toBeInTheDocument();
   });
 });
 
@@ -67,11 +70,32 @@ describe("PopupPrompt", () => {
   it("asks and reports every decision", async () => {
     const onDecide = vi.fn();
     render(<PopupPrompt popup={popup} more={2} onDecide={onDecide} />);
-    expect(screen.getByRole("alertdialog")).toHaveTextContent("La pagina vuole aprire: partner.example.org");
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("The page wants to open: partner.example.org");
     expect(screen.getByText("+2")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Apri/ }));
-    await userEvent.click(screen.getByRole("button", { name: /^Blocca$/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Blocca sempre per questo sito/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Open/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Block$/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Always block for this site/ }));
     expect(onDecide.mock.calls.map((c) => c[0])).toEqual(["open", "block", "block_always"]);
+  });
+});
+
+describe("AdblockSettings filter lists", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useLocaleStore.setState({ locale: "en", hydrated: false });
+  });
+
+  it("names the bundled list (updated_at null) in the UI language, keeps downloaded list names", async () => {
+    vi.spyOn(api.filters, "list").mockResolvedValue({
+      lists: [
+        { name: "Bundled fallback", rules: 91, updated_at: null },
+        { name: "EasyList", rules: 50000, updated_at: "2026-11-12T08:00:00Z" },
+      ],
+    });
+    act(() => useLocaleStore.setState({ locale: "it", hydrated: true }));
+    renderWithProviders(<AdblockSettings settings={undefined} onChange={vi.fn()} />);
+    expect(await screen.findByText("Lista di riserva")).toBeInTheDocument();
+    expect(screen.queryByText("Bundled fallback")).toBeNull();
+    expect(screen.getByText("EasyList")).toBeInTheDocument();
   });
 });

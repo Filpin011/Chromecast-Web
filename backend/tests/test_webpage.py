@@ -200,6 +200,11 @@ async def test_real_chromium_captures_stream_from_nested_iframe_after_click():
     assert found.title == "Partita in diretta"
     assert found.is_live is True
     assert any("/inner.html" in (h.get("Referer") or "") for h in seen)
+    # looks like a normal Chrome: no "HeadlessChrome" in the UA nor in the client hints
+    for h in seen:
+        assert "Headless" not in h.get("User-Agent", "")
+        assert '"Chromium"' in h["sec-ch-ua"] and "Headless" not in h["sec-ch-ua"], h["sec-ch-ua"]
+    assert "Headless" not in str(found.headers)
 
 
 @pytest.mark.browser
@@ -214,7 +219,7 @@ async def test_real_chromium_interactive_session_screencast_tap_and_capture():
     except Exception as exc:
         await provider.close()
         pytest.skip(f"Playwright Chromium unavailable: {exc}")
-    server, port, _ = _serve()
+    server, port, seen = _serve()
     mgr = BrowserManager(provider)
     try:
         s = await mgr.create(f"http://127.0.0.1:{port}/", Viewport(width=1280, height=720))
@@ -235,6 +240,11 @@ async def test_real_chromium_interactive_session_screencast_tap_and_capture():
         assert s.captured and s.captured[0].url.startswith(f"http://localhost:{port}/live/x9/playlist.m3u8")
         assert s.captured[0].headers["referer"] == f"http://localhost:{port}/inner.html"
         assert s.title == "Partita in diretta"
+        # the headers stored for replay and those the CDN saw carry no headless brand
+        assert "Headless" not in str(s.captured[0].headers)
+        assert seen and all("Headless" not in h.get("sec-ch-ua", "") for h in seen)
+        brands = await s.page.evaluate("() => navigator.userAgentData.brands.map(b => b.brand)")
+        assert "Chromium" in brands and not any("Headless" in b for b in brands)
     finally:
         await mgr.shutdown()
         server.shutdown()
@@ -305,3 +315,45 @@ async def test_real_chromium_resolver_with_adblock_on_ad_page():
         await provider.close()
     assert found is not None and found.url == f"http://localhost:{port}/live/x9/playlist.m3u8?st=abc"
     assert {k.lower(): v for k, v in found.headers.items()}["referer"] == f"http://localhost:{port}/inner.html"
+
+
+@pytest.mark.browser
+async def test_real_chromium_frame_offset_of_nested_iframes():
+    """bounding_box() is main-frame relative: nested offsets must not be summed twice,
+    and the iframe's border/padding shift its document."""
+    from playwright.async_api import async_playwright
+
+    pages = {
+        "/top": "<body style='margin:0'><iframe src='/mid' style='position:absolute;left:100px;"
+        "top:50px;border:0;width:900px;height:600px'></iframe></body>",
+        "/mid": "<body style='margin:0'><iframe src='/inner' style='position:absolute;left:200px;"
+        "top:150px;border:3px solid red;padding:5px;width:400px;height:300px'></iframe></body>",
+        "/inner": "<body style='margin:0'>x</body>",
+    }
+    async with async_playwright() as p:
+        try:
+            browser = await p.chromium.launch()
+        except Exception as exc:  # Chromium not installed
+            pytest.skip(f"Playwright Chromium unavailable: {exc}")
+        try:
+            page = await browser.new_page()
+
+            async def handler(route):
+                from urllib.parse import urlsplit
+
+                await route.fulfill(body=pages[urlsplit(route.request.url).path], content_type="text/html")
+
+            await page.route("http://frames.test/**", handler)
+            await page.goto("http://frames.test/top")
+            for _ in range(50):
+                inner = [f for f in page.frames if f.url.endswith("/inner")]
+                if inner:
+                    break
+                await asyncio.sleep(0.1)
+            deepest = inner[0]
+            assert await webpage._frame_offset(page.main_frame) == (0, 0)
+            assert await webpage._frame_offset(deepest.parent_frame) == (100, 50)
+            assert await webpage._frame_offset(deepest) == (100 + 200 + 8, 50 + 150 + 8)
+        finally:
+            await browser.close()
+

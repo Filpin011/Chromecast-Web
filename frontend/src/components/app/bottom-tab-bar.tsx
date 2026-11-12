@@ -3,15 +3,17 @@
 import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { isActivePath, NAV_ITEMS } from "./nav-items";
 
 export function BottomTabBar() {
+  const t = useT();
   const pathname = usePathname() ?? "/";
   return (
     <nav
-      aria-label="Navigazione principale"
+      aria-label={t("nav.main")}
       className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/85 pb-safe backdrop-blur-xl supports-backdrop-filter:bg-background/70 md:hidden"
     >
       <ul className="grid h-16 grid-cols-5">
@@ -37,7 +39,7 @@ export function BottomTabBar() {
                   />
                 )}
                 <Icon className="relative size-[1.35rem]" strokeWidth={active ? 2.4 : 2} />
-                <span className="relative">{item.label}</span>
+                <span className="relative">{t(item.label)}</span>
               </Link>
             </li>
           );

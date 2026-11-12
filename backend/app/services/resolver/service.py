@@ -85,7 +85,22 @@ class HlsInfo:
     width: int | None = None
     height: int | None = None
     cors: bool | None = None  # upstream sends Access-Control-Allow-Origin
-    segment_format: str | None = None  # Cast hlsSegmentFormat; None = MPEG-TS/unknown
+    segment_format: str | None = None  # Cast hlsSegmentFormat (audio); None = MPEG-TS/unknown
+    # Cast hlsVideoSegmentFormat: "fmp4" when the video is fMP4, even next to a packed
+    # audio rendition (then segment_format is the audio's "aac"/...); None = MPEG-TS.
+    video_segment_format: str | None = None
+    # The master mixes video codec families (YouTube: avc1/TS + vp09/fMP4): only the
+    # proxy can serve the receiver a master limited to the probed variant's family.
+    mixed_variants: bool = False
+
+
+@dataclass
+class _ProbeState:
+    origin: str | None  # the Origin sent (None: CORS not checked)
+    rejected: bool = False  # a playlist or segment request answered an HTTP error
+
+    def allows(self, headers: httpx.Headers) -> bool:
+        return self.origin is not None and _allows_origin(headers, self.origin)
 
 
 @dataclass
@@ -108,6 +123,10 @@ class Candidate:
     headers: dict[str, str] = field(default_factory=dict)
     subtitles: list[Subtitle] = field(default_factory=list)
     local_path: Path | None = None
+    # The user / playlist explicitly asked for a User-Agent (``url|User-Agent=...``,
+    # #EXTVLCOPT:http-user-agent): the Chromecast sends its own CrKey UA, so proxy.
+    # The UA yt-dlp or the headless browser add on their own does not count.
+    pinned_user_agent: bool = False
 
 
 def is_url(value: str) -> bool:
@@ -126,15 +145,27 @@ def validate_url(value: str) -> None:
             if not parts.hostname:
                 raise ValueError("missing host")
     except (ValueError, httpx.InvalidURL) as exc:
-        raise AppError(400, f"Malformed URL ({exc}): {value[:80]}", "unsupported_source") from exc
+        raise AppError(
+            400, f"Malformed URL ({exc}): {value[:80]}", "unsupported_source", reason="malformed_url"
+        ) from exc
 
 
 CONNECT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
 
 
+def _host(url: str) -> str:
+    return urlsplit(url).hostname or url[:80]
+
+
 def _connect_failed(url: str, exc: Exception) -> AppError:
-    host = urlsplit(url).hostname or url
-    return AppError(502, f"Could not connect to {host}: {exc or type(exc).__name__}", "resolve_failed")
+    host = _host(url)
+    return AppError(
+        502,
+        f"Could not connect to {host}: {exc or type(exc).__name__}",
+        "resolve_failed",
+        reason="connect_failed",
+        params={"host": host},
+    )
 
 
 def title_from_url(url: str) -> str:
@@ -232,9 +263,21 @@ class Resolver:
         except CONNECT_ERRORS as exc:
             raise _connect_failed(url, exc) from exc
         except httpx.HTTPError as exc:
-            raise AppError(502, f"Could not fetch {url}: {exc}", "resolve_failed") from exc
+            raise AppError(
+                502,
+                f"Could not fetch {url}: {exc}",
+                "resolve_failed",
+                reason="fetch_failed",
+                params={"host": _host(url)},
+            ) from exc
         if resp.status_code >= 400:
-            raise AppError(502, f"Upstream returned HTTP {resp.status_code}", "resolve_failed")
+            raise AppError(
+                502,
+                f"Upstream returned HTTP {resp.status_code}",
+                "resolve_failed",
+                reason="upstream_http",
+                params={"status": resp.status_code},
+            )
         return resp
 
     async def fetch_text(self, url: str, headers: dict[str, str] | None = None) -> tuple[str, str]:
@@ -242,45 +285,99 @@ class Resolver:
         return resp.text, str(resp.url)
 
     async def hls_info(self, url: str, headers: dict[str, str] | None = None) -> HlsInfo:
-        """Best effort: master/media, live (no ENDLIST), best resolution, CORS.
+        """Best effort: master/media, live (no ENDLIST), best resolution, CORS, segment format.
 
         CORS is checked the way the Cast receiver will hit it: with an ``Origin`` header
         (many CDNs only answer ACAO when one is sent), on the playlist, on the first
-        variant and on the first segment (some CDNs allow the .m3u8 but not segments).
-        ``cors`` stays None when it could not be verified.
+        variant, on the audio rendition and on their first segments (some CDNs allow the
+        .m3u8 but not segments). ``cors`` stays None when it could not be verified.
+
+        A CDN that allow-lists Origins (hotlink protection) answers that probe with an
+        HTTP error: the stream is then probed again without ``Origin`` (the way the proxy
+        fetches it) for master/live/segment format, with ``cors`` False so it is proxied.
+
+        The segment format comes from the segment bytes (names lie: YouTube serves packed
+        ID3+ADTS audio as ``seg.ts``), falling back to the playlist's URIs. A separate
+        audio rendition decides ``segment_format`` (``hlsSegmentFormat`` describes the
+        audio); ``video_segment_format`` keeps the video's own fMP4.
         """
+        base = dict(headers or {})
+        info, rejected = await self._hls_probe(url, {"Origin": CAST_RECEIVER_ORIGIN, **base})
+        if rejected and not any(k.lower() == "origin" for k in base):
+            log.debug("hls probe: %s rejects the receiver's Origin, probing without it", url)
+            info, _ = await self._hls_probe(url, base)
+            info.cors = False
+        return info
+
+    async def _hls_probe(self, url: str, hdrs: dict[str, str]) -> tuple[HlsInfo, bool]:
+        """(info, an upstream answered an HTTP error). Without an ``Origin`` in ``hdrs``
+        CORS is not checked (``cors`` False)."""
         info = HlsInfo()
-        hdrs = {"Origin": CAST_RECEIVER_ORIGIN, **(headers or {})}
-        resp = await self._manifest(url, hdrs)
+        state = _ProbeState(origin=hdrs.get("Origin"))
+        resp = await self._manifest(url, hdrs, state)
         if resp is None:
-            return info
+            return info, state.rejected
         try:
             text, final = resp.text, str(resp.url)
-            cors = _allows_origin(resp.headers, hdrs["Origin"])
+            cors = state.allows(resp.headers)
             if not text.lstrip("\ufeff \r\n\t").startswith("#EXTM3U"):
-                return info
+                return info, state.rejected
             info.is_master = hls.is_master_playlist(text)
             media_text, media_base = text, final
+            audio_url: str | None = None
             if info.is_master:
+                filtered = hls.filter_variants(text)
+                info.mixed_variants = filtered != text
+                text = filtered  # what the proxy serves the receiver
                 res = hls.best_resolution(text)
                 if res:
                     info.width, info.height = res
+                audio_url = hls.audio_rendition_url(text, final)
                 variant = hls.first_variant_url(text, final)
                 if variant:
-                    vresp = await self._get(variant, hdrs)
+                    vresp = await self._probe_get(variant, hdrs, state)
                     media_text, media_base = vresp.text, str(vresp.url)
-                    cors = cors and _allows_origin(vresp.headers, hdrs["Origin"])
+                    cors = cors and state.allows(vresp.headers)
                     info.is_live = hls.is_live_media_playlist(media_text)
             else:
                 info.is_live = hls.is_live_media_playlist(text)
-            info.segment_format = hls.segment_format(media_text)
-            segment = hls.first_segment_url(media_text, media_base)
-            if cors and segment:
-                cors = await self._segment_allows_origin(segment, hdrs)
+            fmt, seg_cors = await self._media_playlist_format(media_text, media_base, hdrs, state)
+            cors = cors and seg_cors
+            info.segment_format = fmt
+            info.video_segment_format = "fmp4" if fmt == "fmp4" else None
+            if audio_url:
+                aresp = await self._probe_get(audio_url, hdrs, state)
+                cors = cors and state.allows(aresp.headers)
+                afmt, seg_cors = await self._media_playlist_format(aresp.text, str(aresp.url), hdrs, state)
+                cors = cors and seg_cors
+                if afmt in ("fmp4", "aac", "mp3", "ac3", "e_ac3"):
+                    info.segment_format = afmt  # the audio rendition's own container
             info.cors = cors
         except Exception as exc:  # network errors are not fatal here
             log.debug("hls probe failed for %s: %s", url, exc)
-        return info
+        return info, state.rejected
+
+    async def _probe_get(self, url: str, headers: dict[str, str], state: _ProbeState) -> httpx.Response:
+        try:
+            return await self._get(url, headers)
+        except AppError as exc:
+            if exc.reason == "upstream_http":
+                state.rejected = True
+            raise
+
+    async def _media_playlist_format(
+        self, text: str, base: str, headers: dict[str, str], state: _ProbeState | None = None
+    ) -> tuple[str | None, bool]:
+        """(Cast hlsSegmentFormat, first segment answers the receiver's Origin) of a media playlist."""
+        fmt = hls.segment_format(text)
+        segment = hls.first_segment_url(text, base)
+        if not segment:
+            return fmt, True
+        allowed, head = await self._segment_head(segment, headers, state)
+        sniffed = hls.sniff_segment(head)
+        if sniffed is not None:
+            fmt = None if sniffed == "ts" else sniffed
+        return fmt, allowed
 
     async def dash_info(self, url: str, headers: dict[str, str] | None = None) -> DashInfo:
         """Best effort: live (dynamic MPD) and CORS on the manifest, as the receiver sees it."""
@@ -298,7 +395,9 @@ class Resolver:
             log.debug("dash probe failed for %s: %s", url, exc)
         return info
 
-    async def _manifest(self, url: str, headers: dict[str, str]) -> httpx.Response | None:
+    async def _manifest(
+        self, url: str, headers: dict[str, str], state: _ProbeState | None = None
+    ) -> httpx.Response | None:
         """Fetch a manifest for probing. An unreachable host is fatal (502 resolve_failed:
         casting it can only fail on the TV); any other problem (4xx, CORS, garbage) is not."""
         try:
@@ -306,22 +405,38 @@ class Resolver:
         except AppError as exc:
             if isinstance(exc.__cause__, CONNECT_ERRORS):
                 raise
+            if state is not None and exc.reason == "upstream_http":
+                state.rejected = True
             log.debug("manifest probe failed for %s: %s", url, exc)
         except Exception as exc:  # anything else is not fatal for a best-effort probe
             log.debug("manifest probe failed for %s: %s", url, exc)
         return None
 
-    async def _segment_allows_origin(self, url: str, headers: dict[str, str]) -> bool:
-        """Headers-only look at a segment (the body is never downloaded)."""
+    async def _segment_head(
+        self, url: str, headers: dict[str, str], state: _ProbeState | None = None
+    ) -> tuple[bool, bytes]:
+        """(answers the receiver's Origin, first bytes) of a segment; only a few KB are read."""
         try:
             req = self.client.build_request("GET", url, headers={"User-Agent": DESKTOP_UA, **headers})
             resp = await self.client.send(req, stream=True, follow_redirects=True)
             try:
-                return resp.status_code < 400 and _allows_origin(resp.headers, headers["Origin"])
+                if resp.status_code >= 400:
+                    if state is not None:
+                        state.rejected = True
+                    return False, b""
+                origin = headers.get("Origin")
+                allowed = origin is not None and _allows_origin(resp.headers, origin)
+                buf = bytearray()
+                with contextlib.suppress(httpx.HTTPError):
+                    async for chunk in resp.aiter_bytes():
+                        buf.extend(chunk)
+                        if len(buf) >= hls.SEGMENT_SNIFF_BYTES:
+                            break
+                return allowed, bytes(buf[: hls.SEGMENT_SNIFF_BYTES])
             finally:
                 await resp.aclose()
         except Exception:
-            return False
+            return False, b""
 
     # ------------------------------------------------------------ detection
     def _local_candidate(self, value: str) -> Path | None:
@@ -346,8 +461,10 @@ class Resolver:
             return "direct"
         if not is_url(value):
             if value.startswith(("/", "file:")):
-                raise AppError(400, "Local file not found or MEDIA_ROOT not set", "unsupported_source")
-            raise AppError(400, f"Unsupported input: {value[:80]}", "unsupported_source")
+                raise AppError(
+                    400, "Local file not found or MEDIA_ROOT not set", "unsupported_source", reason="local_unavailable"
+                )
+            raise AppError(400, f"Unsupported input: {value[:80]}", "unsupported_source", reason="unsupported_input")
         ext = sniff.url_ext(value)
         if ext == ".m3u8":
             # IPTV providers often name channel lists "list.m3u8": look at the body
@@ -389,6 +506,7 @@ class Resolver:
         if headers:
             cand.original_input = value  # keep the headers for history/queue replays
             cand.headers = {**headers, **cand.headers}
+            cand.pinned_user_agent = any(k.lower() == "user-agent" for k in headers)
         return MediaResult(media=await self.finalize(cand))
 
     async def resolve_media(
@@ -400,6 +518,7 @@ class Resolver:
                 400,
                 "This is an M3U playlist: import it and pick a channel",
                 "unsupported_source",
+                reason="is_playlist",
             )
         if title:
             res.media.title = title
@@ -420,7 +539,7 @@ class Resolver:
             return name or "HLS", [], True
         has_header = content.lstrip("\ufeff \r\n\t").startswith("#EXTM3U") or "#EXTINF" in content
         if not has_header and not any(is_url(line.strip()) for line in content.splitlines()):
-            raise AppError(400, "Not an M3U playlist", "resolve_failed")
+            raise AppError(400, "Not an M3U playlist", "resolve_failed", reason="not_m3u")
         parsed = m3u.parse_m3u(content)
         name = parsed.attrs.get("x-tvg-name") or parsed.attrs.get("name") or name or "Playlist"
         return name, m3u.to_channels(parsed), False
@@ -440,7 +559,7 @@ class Resolver:
         p = self._local_candidate(value)
         if p is None:
             localres.require_root(self.media_root)
-            raise AppError(404, "Local file not found", "resolve_failed")
+            raise AppError(404, "Local file not found", "resolve_failed", reason="local_file_not_found")
         return Candidate(
             url=p.as_uri(),
             source_kind="local",
@@ -455,7 +574,9 @@ class Resolver:
         try:
             r = await ytdlp.resolve_ytdlp(value, self.ytdlp_extractor)
         except Exception as exc:
-            raise AppError(422, f"yt-dlp could not extract a stream: {exc}", "resolve_failed") from exc
+            raise AppError(
+                422, f"yt-dlp could not extract a stream: {exc}", "resolve_failed", reason="extract_failed"
+            ) from exc
         mime = None
         if "m3u8" in r.protocol:
             mime = HLS_MIME
@@ -505,7 +626,7 @@ class Resolver:
             return cand
         except AppError:
             pass
-        raise AppError(422, webpage.NO_STREAM_HINT, "resolve_failed")
+        raise AppError(422, webpage.NO_STREAM_HINT, "resolve_failed", reason="no_stream_on_page")
 
     # ------------------------------------------------------------ finalize
     async def finalize(self, cand: Candidate) -> ResolvedMedia:
@@ -515,6 +636,7 @@ class Resolver:
         if cand.local_path is not None:
             rel = localres.relative(self.media_root.resolve(), cand.local_path)  # type: ignore[union-attr]
             local_url = f"/local/{quote(rel)}"
+            cand.subtitles = self._local_subtitles(cand.local_path, base)
             if cand.local_path.suffix.lower() in localres.NEEDS_RESTREAM:
                 job = self.restream.register(str(cand.local_path), live=False)
                 path = f"/restream/{job.token}/index.m3u8"
@@ -550,11 +672,15 @@ class Resolver:
             mime, kind = HLS_MIME, "hls"
         stream_type = cand.stream_type
         no_cors = False
+        mixed_variants = False
         segment_format: str | None = None
+        video_segment_format: str | None = None
         if kind == "hls":
             info = await self.hls_info(url, headers)
             no_cors = info.cors is not True  # the Cast receiver needs CORS for HLS: proxy unless verified
             segment_format = info.segment_format
+            video_segment_format = info.video_segment_format
+            mixed_variants = info.mixed_variants
             if stream_type is None:
                 stream_type = "BUFFERED" if info.is_live is False else "LIVE"
         elif kind == "dash":
@@ -582,7 +708,8 @@ class Resolver:
             return self._media(cand, base + path, path, HLS_MIME, stream_type, True)
 
         cand.subtitles = [self._proxied_subtitle(sub, headers, base) for sub in cand.subtitles]
-        must_proxy = self.force_proxy() or needs_header_proxy(headers) or no_cors
+        pinned_ua = cand.pinned_user_agent and any(k.lower() == "user-agent" for k in headers)
+        must_proxy = self.force_proxy() or needs_header_proxy(headers) or pinned_ua or no_cors or mixed_variants
         if must_proxy or kind in ("hls", "dash"):
             # Always register: the browser preview needs a same-origin (CORS-free) path.
             target = self.tokens.register(url, headers)
@@ -590,8 +717,20 @@ class Resolver:
             cast_url = base + path if must_proxy else url
             media = self._media(cand, cast_url, path, mime, stream_type, must_proxy)
             media.hls_segment_format = segment_format  # type: ignore[assignment]
+            media.hls_video_segment_format = video_segment_format  # type: ignore[assignment]
             return media
         return self._media(cand, url, url, mime, stream_type, False)
+
+    def _local_subtitles(self, video: Path, base: str) -> list[Subtitle]:
+        """Sidecar ``.vtt``/``.srt`` files next to a local video (SRT is converted by ``/local``)."""
+        root = self.media_root.resolve()  # type: ignore[union-attr]
+        subs: list[Subtitle] = []
+        for p, lang in localres.sidecar_subtitles(video):
+            url = f"{base}/local/{quote(localres.relative(root, p))}"
+            if p.suffix.lower() == ".srt":
+                url += "?as=vtt"
+            subs.append(Subtitle(url=url, lang=lang, label=lang or p.name))
+        return subs
 
     def _proxied_subtitle(self, sub: Subtitle, headers: dict[str, str], base: str) -> Subtitle:
         """Cast receivers require CORS on text tracks: always serve them via the proxy."""

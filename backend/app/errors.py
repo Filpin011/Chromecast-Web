@@ -12,12 +12,38 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 log = logging.getLogger(__name__)
 
 
+Params = dict[str, str | int]
+
+
 class AppError(Exception):
-    def __init__(self, status_code: int, detail: str, code: str | None = None) -> None:
+    """An API error. ``detail`` is English, for logs/developers; clients translate by ``code``
+    (stable, coarse) and, when set, ``reason`` (stable, finer-grained) with ``params``."""
+
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: str | None = None,
+        *,
+        reason: str | None = None,
+        params: Params | None = None,
+    ) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
         self.code = code
+        self.reason = reason
+        self.params = params
+
+    def body(self) -> dict[str, object]:
+        body: dict[str, object] = {"detail": self.detail}
+        if self.code:
+            body["code"] = self.code
+        if self.reason:
+            body["reason"] = self.reason
+        if self.params:
+            body["params"] = self.params
+        return body
 
 
 def not_found(detail: str, code: str) -> AppError:
@@ -27,10 +53,7 @@ def not_found(detail: str, code: str) -> AppError:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        body: dict[str, str] = {"detail": exc.detail}
-        if exc.code:
-            body["code"] = exc.code
-        return JSONResponse(body, status_code=exc.status_code)
+        return JSONResponse(exc.body(), status_code=exc.status_code)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:

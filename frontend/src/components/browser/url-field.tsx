@@ -2,10 +2,15 @@
 
 import { Globe, Lock, RotateCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { normalizeUrl } from "@/lib/url";
+import { cn } from "@/lib/utils";
 
-/** Compact URL pill: shows the host (tap to edit) with the reload control inside it. */
+/**
+ * Compact URL pill: shows the host (tap to edit) with the reload control inside it. Below 400px the reload
+ * control is hidden so the host stays readable; the workspace offers it in the "More" menu there.
+ */
 export function UrlField({
   url,
   onNavigate,
@@ -15,6 +20,7 @@ export function UrlField({
   onNavigate: (url: string) => void;
   onReload?: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(url);
   const secure = url.startsWith("https:");
@@ -29,7 +35,7 @@ export function UrlField({
       <form onSubmit={submit} className="min-w-0 flex-1">
         <input
           autoFocus
-          aria-label="Indirizzo"
+          aria-label={t("url.address")}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => setEditing(false)}
@@ -52,18 +58,21 @@ export function UrlField({
           setDraft(url);
           setEditing(true);
         }}
-        className="flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full pl-4 text-sm"
-        aria-label={`Indirizzo: ${url}. Tocca per modificare`}
+        className={cn(
+          "flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm",
+          onReload && "min-[400px]:pr-0",
+        )}
+        aria-label={t("url.addressEdit", { url })}
       >
         {secure ? <Lock className="size-3.5 shrink-0 text-muted-foreground" /> : <Globe className="size-3.5 shrink-0 text-muted-foreground" />}
-        <span className="truncate font-medium">{hostOf(url) || "Nuova pagina"}</span>
+        <span className="truncate font-medium">{hostOf(url) || t("url.newPage")}</span>
       </button>
       {onReload && (
         <button
           type="button"
           onClick={onReload}
-          aria-label="Ricarica"
-          className="grid size-11 shrink-0 place-items-center rounded-full text-muted-foreground active:bg-foreground/10"
+          aria-label={t("common.reload")}
+          className="hidden size-11 shrink-0 place-items-center rounded-full text-muted-foreground active:bg-foreground/10 min-[400px]:grid"
         >
           <RotateCw className="size-4.5" />
         </button>

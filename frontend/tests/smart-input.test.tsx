@@ -29,20 +29,20 @@ afterEach(() => setClipboard(false));
 describe("SmartInput", () => {
   it("detects the kind of input while typing", () => {
     render(<Harness onSubmit={vi.fn()} />);
-    const box = screen.getByLabelText("URL, playlist o link video");
+    const box = screen.getByLabelText("URL, playlist or video link");
     fireEvent.change(box, { target: { value: "https://youtu.be/dQw4w9WgXcQ" } });
     expect(screen.getByTestId("input-kind")).toHaveTextContent("YouTube");
     fireEvent.change(box, { target: { value: "http://x/live.m3u8" } });
-    expect(screen.getByTestId("input-kind")).toHaveTextContent("Stream diretto");
+    expect(screen.getByTestId("input-kind")).toHaveTextContent("Direct stream");
     fireEvent.change(box, { target: { value: "boh" } });
-    expect(screen.getByTestId("input-kind")).toHaveTextContent("Non riconosciuto");
-    expect(screen.getByRole("button", { name: "Analizza" })).toBeDisabled();
+    expect(screen.getByTestId("input-kind")).toHaveTextContent("Not recognised");
+    expect(screen.getByRole("button", { name: "Analyse" })).toBeDisabled();
   });
 
   it("submits on Enter with the trimmed value", () => {
     const onSubmit = vi.fn();
     render(<Harness onSubmit={onSubmit} />);
-    const box = screen.getByLabelText("URL, playlist o link video");
+    const box = screen.getByLabelText("URL, playlist or video link");
     fireEvent.change(box, { target: { value: "  https://a.b/c.m3u  " } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledWith("https://a.b/c.m3u");
@@ -51,7 +51,7 @@ describe("SmartInput", () => {
   it("does not submit invalid input", () => {
     const onSubmit = vi.fn();
     render(<Harness onSubmit={onSubmit} />);
-    const box = screen.getByLabelText("URL, playlist o link video");
+    const box = screen.getByLabelText("URL, playlist or video link");
     fireEvent.change(box, { target: { value: "not a url" } });
     fireEvent.keyDown(box, { key: "Enter" });
     expect(onSubmit).not.toHaveBeenCalled();
@@ -60,17 +60,17 @@ describe("SmartInput", () => {
   it("pastes from the clipboard and can clear", async () => {
     setClipboard(true, vi.fn().mockResolvedValue(" https://www.youtube.com/watch?v=1 "));
     render(<Harness onSubmit={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /Incolla/ }));
-    const box = screen.getByLabelText<HTMLTextAreaElement>("URL, playlist o link video");
+    fireEvent.click(screen.getByRole("button", { name: /Paste/ }));
+    const box = screen.getByLabelText<HTMLTextAreaElement>("URL, playlist or video link");
     await waitFor(() => expect(box.value).toBe("https://www.youtube.com/watch?v=1"));
-    fireEvent.click(screen.getByRole("button", { name: "Cancella" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(box.value).toBe("");
   });
 
   it("explains when clipboard access is denied", async () => {
     setClipboard(true, vi.fn().mockRejectedValue(new Error("denied")));
     render(<Harness onSubmit={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /Incolla/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Paste/ }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 
@@ -78,14 +78,14 @@ describe("SmartInput", () => {
     // http://192.168.x.y:8000 is not a secure context: navigator.clipboard is undefined there
     setClipboard(false);
     render(<Harness onSubmit={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /Incolla/ })).not.toBeInTheDocument();
-    expect(screen.getByTestId("paste-hint")).toHaveTextContent("Tieni premuto");
+    expect(screen.queryByRole("button", { name: /Paste/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("paste-hint")).toHaveTextContent("Long-press the field");
   });
 
   it("hides the paste button when the API is missing even in a secure context", () => {
     setClipboard(true);
     render(<Harness onSubmit={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /Incolla/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Paste/ })).not.toBeInTheDocument();
   });
 });
 
@@ -101,7 +101,7 @@ describe("auto-resolve policy", () => {
   it("reports pastes separately from typing", () => {
     const onChange = vi.fn();
     render(<SmartInput value="" onChange={onChange} onSubmit={vi.fn()} />);
-    const box = screen.getByLabelText("URL, playlist o link video");
+    const box = screen.getByLabelText("URL, playlist or video link");
     fireEvent.change(box, { target: { value: "h" } });
     expect(onChange).toHaveBeenLastCalledWith("h", "type");
     fireEvent.paste(box);

@@ -18,12 +18,14 @@ import {
 } from "@/hooks/queries";
 import { useDevices } from "@/hooks/use-app-state";
 import { useCast } from "@/hooks/use-cast";
-import { formatRelative, SOURCE_LABEL } from "@/lib/format";
+import { useT } from "@/i18n";
+import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Tab = "favorites" | "history";
 
 function LibraryInner() {
+  const t = useT();
   const params = useSearchParams();
   const router = useRouter();
   const tab: Tab = params.get("tab") === "history" ? "history" : "favorites";
@@ -38,21 +40,21 @@ function LibraryInner() {
   const names = useMemo(() => new Map(devices.map((d) => [d.id, d.name])), [devices]);
   const deviceName = (id: string | null) => (id ? names.get(id) : undefined);
 
-  const setTab = (t: Tab) => router.replace(`/library/?tab=${t}`, { scroll: false });
+  const setTab = (next: Tab) => router.replace(`/library/?tab=${next}`, { scroll: false });
   const list = tab === "favorites" ? favorites : history;
 
   return (
     <>
       <PageHeader
-        title="Libreria"
+        title={t("library.title")}
         actions={
           tab === "history" && (history.data?.length ?? 0) > 0 ? (
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Cancella cronologia"
+              aria-label={t("library.clearHistory")}
               onClick={() => {
-                if (window.confirm("Cancellare tutta la cronologia?")) clear.mutate();
+                if (window.confirm(t("library.clearHistoryConfirm"))) clear.mutate();
               }}
             >
               <Trash2 className="size-5" />
@@ -64,26 +66,26 @@ function LibraryInner() {
         {localAvailable && (
           <Link href="/files/" className="flex min-h-14 items-center gap-3 rounded-2xl border bg-card px-4 md:hidden">
             <FolderOpen className="size-5 text-primary" />
-            <span className="flex-1 font-medium">File locali</span>
+            <span className="flex-1 font-medium">{t("nav.files")}</span>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
         )}
         <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist">
           {(
             [
-              ["favorites", Star, "Preferiti", favorites.data?.length],
-              ["history", Clock, "Cronologia", history.data?.length],
+              ["favorites", Star, t("library.favorites"), favorites.data?.length],
+              ["history", Clock, t("library.history"), history.data?.length],
             ] as const
-          ).map(([t, Icon, label, count]) => (
+          ).map(([id, Icon, label, count]) => (
             <button
-              key={t}
+              key={id}
               type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
               className={cn(
                 "flex h-10 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-all",
-                tab === t ? "bg-background shadow-sm" : "text-muted-foreground",
+                tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
               <Icon className="size-4" /> {label}
@@ -101,7 +103,7 @@ function LibraryInner() {
                 <MediaRow
                   key={f.id}
                   title={f.title}
-                  subtitle={`${SOURCE_LABEL[f.source_kind]} · ${formatRelative(f.created_at)}`}
+                  subtitle={`${t(SOURCE_LABEL_KEY[f.source_kind])} · ${formatRelative(f.created_at)}`}
                   thumbnail={f.thumbnail}
                   disabled={busy}
                   onCast={() => cast({ input: f.input, kind: f.source_kind, title: f.title })}
@@ -110,14 +112,14 @@ function LibraryInner() {
                 />
               ))
             ) : (
-              <EmptyState icon={Star} title="Nessun preferito" description="Tocca la stella su un contenuto per ritrovarlo qui." />
+              <EmptyState icon={Star} title={t("library.noFavorites")} description={t("library.noFavoritesHint")} />
             )
           ) : history.data?.length ? (
             history.data.map((h) => (
               <MediaRow
                 key={h.id}
                 title={h.title}
-                subtitle={[SOURCE_LABEL[h.source_kind], deviceName(h.device_id), formatRelative(h.played_at)].filter(Boolean).join(" · ")}
+                subtitle={[t(SOURCE_LABEL_KEY[h.source_kind]), deviceName(h.device_id), formatRelative(h.played_at)].filter(Boolean).join(" · ")}
                 thumbnail={h.thumbnail}
                 disabled={busy}
                 onCast={() => cast({ input: h.input, kind: h.source_kind, title: h.title })}
@@ -126,7 +128,7 @@ function LibraryInner() {
               />
             ))
           ) : (
-            <EmptyState icon={Clock} title="Cronologia vuota" description="Ciò che trasmetti comparirà qui." />
+            <EmptyState icon={Clock} title={t("library.historyEmpty")} description={t("library.historyEmptyHint")} />
           )}
         </div>
       </PageBody>

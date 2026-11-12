@@ -70,6 +70,9 @@ class ResolvedMedia(Model):
     subtitles: list[Subtitle] = Field(default_factory=list)
     # HLS only: segment container when not MPEG-TS (sent as hlsSegmentFormat in the LOAD)
     hls_segment_format: HlsSegmentFormat | None = None
+    # HLS only: "fmp4" when the video segments are fMP4 (sent as hlsVideoSegmentFormat), also
+    # when hls_segment_format names a packed audio rendition; None = MPEG-TS video
+    hls_video_segment_format: Literal["fmp4"] | None = None
 
 
 class Channel(Model):

@@ -88,6 +88,7 @@ def test_play_resolve_error(client):
     assert r.status_code == 422 and r.json()["code"] == "resolve_failed"
     r = client.post(f"/api/devices/{DEV}/play", json={"input": "hello"})
     assert r.status_code == 400 and r.json()["code"] == "unsupported_source"
+    assert r.json()["reason"] == "unsupported_input" and "params" not in r.json()
 
 
 def test_queue_endpoints(client):

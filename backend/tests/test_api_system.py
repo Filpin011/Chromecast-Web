@@ -1,14 +1,17 @@
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import __version__
 from app.config import AppConfig
 from app.main import create_app
 from tests.conftest import player
 
 
 def test_health_and_state(client):
-    assert client.get("/api/health").json() == {"status": "ok", "driver": "fake", "version": "0.1.0"}
+    assert client.get("/api/health").json() == {"status": "ok", "driver": "fake", "version": __version__}
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[-+].+)?", __version__)
     st = client.get("/api/state").json()
     assert {d["name"] for d in st["devices"]} >= {"Chromecast Ultra (fake)"}
     assert st["players"] == {} and st["active_device_id"] is None and st["version"] >= 1
@@ -77,6 +80,18 @@ def test_local_listing_and_file_serving(client):
     assert r.status_code == 206 and len(r.content) == 100
     assert r.headers["content-range"] == "bytes 0-99/2048"
     assert client.get("/local/Movies/missing.mp4").status_code == 404
+
+
+def test_local_srt_is_served_as_webvtt(client, media_root):
+    (media_root / "Movies" / "film.it.srt").write_bytes("1\n00:00:01,000 --> 00:00:02,000\nPerché\n".encode("cp1252"))
+    r = client.get("/local/Movies/film.it.srt", params={"as": "vtt"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/vtt")
+    assert r.headers["access-control-allow-origin"] == "*"
+    assert r.text == "WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nPerché\n"
+    listed = [e["name"] for e in client.get("/api/local", params={"path": "Movies"}).json()["entries"]]
+    assert "film.it.srt" not in listed and "film.mp4" in listed
+    raw = client.get("/local/Movies/film.it.srt")  # without ?as=vtt: the file as is
+    assert raw.status_code == 200 and raw.content.startswith(b"1\n00:00:01,000")
 
 
 def test_local_disabled(config: AppConfig):

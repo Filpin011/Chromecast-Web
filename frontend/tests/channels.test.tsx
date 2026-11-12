@@ -67,11 +67,11 @@ describe("ChannelList", () => {
     expect(onSelect).toHaveBeenCalledWith(items[0]);
 
     for (const [label, action] of [
-      ["Aggiungi alla coda", "queue"],
-      ["Aggiungi ai preferiti", "favorite"],
-      ["Anteprima", "preview"],
+      ["Add to queue", "queue"],
+      ["Add to favorites", "favorite"],
+      ["Preview", "preview"],
     ] as const) {
-      fireEvent.click(screen.getByRole("button", { name: "Altre azioni per IT: Rai 2 HD" }));
+      fireEvent.click(screen.getByRole("button", { name: "More actions for IT: Rai 2 HD" }));
       fireEvent.click(await screen.findByRole("menuitem", { name: label }));
       expect(onAction).toHaveBeenLastCalledWith(action, items[1]);
     }
@@ -82,6 +82,6 @@ describe("ChannelList", () => {
     renderList("grid");
     const item = screen.getByText("IT: Rai 3 HD").closest("[role=listitem]") as HTMLElement;
     fireEvent.contextMenu(item);
-    expect(await screen.findByRole("menuitem", { name: "Aggiungi alla coda" })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Add to queue" })).toBeInTheDocument();
   });
 });

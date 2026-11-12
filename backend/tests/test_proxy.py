@@ -3,7 +3,7 @@ import httpx
 from app.services.proxy.hls import encode_url
 from app.services.proxy.stream import upstream_url
 from app.services.proxy.tokens import ProxyTarget, TokenRegistry, clean_headers
-from tests.fakes import LIVE_MEDIA, MASTER
+from tests.fakes import LIVE_MEDIA, MASTER, MIXED_MASTER
 
 
 def register(client, url, headers=None):
@@ -51,6 +51,15 @@ def test_master_and_media_playlists_rewritten_with_headers(client, mock_http):
     assert seg_path.endswith("/seg100.ts")
     r = client.get(seg_path)
     assert r.content == b"TSDATA" * 100 and seg.calls.last.request.headers["referer"] == "https://site.example/"
+
+
+def test_master_mixing_codec_families_served_with_one_family(client, mock_http):
+    mock_http.get("https://cdn.example.com/yt/master.m3u8").respond(200, text=MIXED_MASTER)
+    t = register(client, "https://cdn.example.com/yt/master.m3u8")
+    r = client.get(f"/proxy/{t.token}/master.m3u8")
+    assert r.status_code == 200
+    assert "vp09" not in r.text and "RESOLUTION=1920x1080" in r.text
+    assert len([ln for ln in r.text.splitlines() if ln and not ln.startswith("#")]) == 3
 
 
 def test_range_passthrough(client, mock_http):

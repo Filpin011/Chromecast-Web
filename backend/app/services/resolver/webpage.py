@@ -97,7 +97,7 @@ PAGE_META_JS = """
 
 NO_STREAM_HINT = (
     "No video stream found on the page. Open it in the interactive browser "
-    "(“Apri nel browser interattivo”) to click through manually."
+    "to click through manually."
 )
 
 
@@ -150,19 +150,29 @@ async def request_headers(request: Any, context: Any = None) -> dict[str, str]:
     return {k: v for k, v in headers.items() if not k.startswith(":")}
 
 
+# Border + padding of an <iframe>: its document starts inside them, not at the border box.
+IFRAME_INSET_JS = """e => { const cs = getComputedStyle(e);
+  return {x: e.clientLeft + parseFloat(cs.paddingLeft || '0'),
+          y: e.clientTop + parseFloat(cs.paddingTop || '0')}; }"""
+
+
 async def _frame_offset(frame: Any) -> tuple[float, float]:
-    """Top-left of ``frame`` in main-page coordinates (walks nested iframes)."""
-    x = y = 0.0
-    current = frame
-    while getattr(current, "parent_frame", None) is not None:
-        el = await current.frame_element()
-        box = await el.bounding_box()
-        if not box:
-            break
-        x += box["x"]
-        y += box["y"]
-        current = current.parent_frame
-    return x, y
+    """Top-left of ``frame``'s viewport in main-page coordinates.
+
+    Playwright's ``bounding_box()`` is already relative to the main frame, even for an
+    <iframe> nested several levels deep: only the deepest iframe element is measured
+    (adding its ancestors' boxes would count every outer offset twice).
+    """
+    if getattr(frame, "parent_frame", None) is None:
+        return 0.0, 0.0
+    el = await frame.frame_element()
+    box = await el.bounding_box()
+    if not box:
+        return 0.0, 0.0
+    inset = {"x": 0.0, "y": 0.0}
+    with contextlib.suppress(Exception):
+        inset = await el.evaluate(IFRAME_INSET_JS)
+    return box["x"] + inset["x"], box["y"] + inset["y"]
 
 
 async def click_play(page: Any) -> None:

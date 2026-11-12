@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 from pathlib import Path
 
 from app.errors import AppError
@@ -24,6 +25,55 @@ EXTRA_MIME = {
 }
 # Containers the Chromecast can't play directly → ffmpeg restream
 NEEDS_RESTREAM = {".avi", ".wmv", ".flv", ".ts", ".m2ts"}
+
+
+SUBTITLE_EXTS = (".vtt", ".srt")
+MAX_SIDECARS = 12
+_SRT_TIME = re.compile(r"(\d{1,2}:\d{2}:\d{2}),(\d{1,3})")
+
+
+def sidecar_subtitles(video: Path) -> list[tuple[Path, str | None]]:
+    """Subtitle files next to ``video``: ``Film.vtt``, ``Film.it.srt``, ``Film.en.forced.vtt``…
+
+    Returns ``(path, lang)`` pairs, ``lang`` being the first dotted part after the stem
+    (``None`` for a plain ``Film.srt``)."""
+    stem = video.stem.lower()
+    out: list[tuple[Path, str | None]] = []
+    try:
+        siblings = sorted(video.parent.iterdir(), key=lambda c: c.name.lower())
+    except OSError:
+        return out
+    for child in siblings:
+        name = child.name.lower()
+        if child.suffix.lower() not in SUBTITLE_EXTS or not child.is_file():
+            continue
+        middle = name[: -len(child.suffix)]
+        if middle == stem:
+            out.append((child, None))
+        elif middle.startswith(stem + "."):
+            lang = middle[len(stem) + 1 :].split(".")[0] or None
+            out.append((child, lang))
+        if len(out) >= MAX_SIDECARS:
+            break
+    return out
+
+
+def read_text_any(p: Path) -> str:
+    """Subtitle files come in UTF-8 (with or without BOM) or legacy Windows code pages."""
+    raw = p.read_bytes()
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("latin-1")
+
+
+def srt_to_vtt(text: str) -> str:
+    """Convert SubRip to WebVTT (the only text format the Default Media Receiver loads)."""
+    body = text.replace("\r\n", "\n").replace("\r", "\n").strip("\ufeff\n ")
+    body = _SRT_TIME.sub(lambda m: f"{m.group(1)}.{m.group(2).ljust(3, '0')}", body)
+    return "WEBVTT\n\n" + body + "\n"
 
 
 def guess_mime(path: str) -> str | None:
@@ -65,7 +115,8 @@ def list_dir(media_root: Path | None, rel: str = "") -> LocalListing:
             continue
         if child.is_dir():
             entries.append(LocalEntry(name=child.name, path=relative(root, child), is_dir=True))
-        elif child.suffix.lower() in MEDIA_EXTS:
+        elif child.suffix.lower() in MEDIA_EXTS and child.suffix.lower() not in SUBTITLE_EXTS:
+            # subtitle files are not listed: they are attached to their video automatically
             entries.append(
                 LocalEntry(
                     name=child.name,

@@ -32,9 +32,14 @@ async def import_playlist(body: m.PlaylistIn, s: Services = Depends(services)) -
         raise AppError(422, "Provide either 'url' or 'content'", "validation_error")
     name, channels, is_hls = await s.resolver.load_m3u(url=url, content=content)
     if is_hls:
-        raise AppError(400, "This is an HLS stream, not an IPTV playlist: play it directly", "unsupported_source")
+        raise AppError(
+            400,
+            "This is an HLS stream, not an IPTV playlist: play it directly",
+            "unsupported_source",
+            reason="hls_not_playlist",
+        )
     if not channels:
-        raise AppError(400, "The playlist contains no channels", "resolve_failed")
+        raise AppError(400, "The playlist contains no channels", "resolve_failed", reason="empty_playlist")
     return s.db.create_playlist((body.name or "").strip() or name, url, channels)
 
 

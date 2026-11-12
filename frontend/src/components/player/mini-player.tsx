@@ -5,8 +5,8 @@ import { Cast, ImageIcon } from "lucide-react";
 import { isActivePlayback, useActivePlayer } from "@/hooks/use-app-state";
 import { useCommand } from "@/hooks/use-command";
 import { useNow } from "@/hooks/use-now";
+import { useT } from "@/i18n";
 import { extrapolatePosition, isLive } from "@/lib/player";
-
 import { useUiStore } from "@/stores/ui-store";
 import { Artwork } from "./artwork";
 import { LiveBadge } from "./live-badge";
@@ -24,6 +24,7 @@ function MiniProgress({ position, duration }: { position: number; duration: numb
 
 /** Persistent compact player above the tab bar; tap to expand into "Now Playing". */
 export function MiniPlayer({ visible }: { visible: boolean }) {
+  const t = useT();
   const { device, player, receivedAt } = useActivePlayer();
   const { run } = useCommand(device?.id);
   const open = useUiStore((s) => s.setNowPlayingOpen);
@@ -50,14 +51,14 @@ export function MiniPlayer({ visible }: { visible: boolean }) {
             <button
               type="button"
               data-slot="mini-open"
-              aria-label="Apri player"
+              aria-label={t("player.open")}
               onClick={() => open(true)}
               className="flex h-full min-w-0 flex-1 items-center gap-3 rounded-2xl pr-2 pl-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <Artwork player={player} className="size-12 rounded-lg" />
               <span className="block min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold" data-testid="mini-title">
-                  {player.showing_idle_image && !isActivePlayback(player) ? "Immagine di attesa" : (player.title ?? "Senza titolo")}
+                  {player.showing_idle_image && !isActivePlayback(player) ? t("settings.idleImage") : (player.title ?? t("player.untitled"))}
                 </span>
                 <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
                   {player.showing_idle_image && !isActivePlayback(player) ? (

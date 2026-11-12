@@ -10,6 +10,7 @@ from app.services.net import DESKTOP_UA as DESKTOP_UA  # re-exported
 
 log = logging.getLogger(__name__)
 
+LOCALE = "it-IT"
 MOBILE_UA = (
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/130.0.0.0 Mobile Safari/537.36"
@@ -19,6 +20,11 @@ Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined }
 window.chrome = window.chrome || { runtime: {} };
 Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en'] });
 """
+# The full Chromium in "new" headless mode, not chromium-headless-shell: the shell's brand
+# is "HeadlessChrome", which no UA override hides from the Sec-CH-UA client hints or
+# navigator.userAgentData (every frame, worker and popup). Full Chromium reports the same
+# brands as a regular desktop Chromium.
+CHROMIUM_CHANNEL = "chromium"
 CHROMIUM_ARGS = [
     "--autoplay-policy=no-user-gesture-required",
     "--disable-blink-features=AutomationControlled",
@@ -48,7 +54,9 @@ class PlaywrightProvider:
 
             if self._pw is None:
                 self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
+            self._browser = await self._pw.chromium.launch(
+                headless=True, channel=CHROMIUM_CHANNEL, args=CHROMIUM_ARGS
+            )
             return self._browser
 
     def _user_agent(self, mobile: bool) -> str:
@@ -70,7 +78,7 @@ class PlaywrightProvider:
             is_mobile=mobile,
             has_touch=mobile,
             device_scale_factor=1,
-            locale="it-IT",
+            locale=LOCALE,
             timezone_id="Europe/Rome",
             ignore_https_errors=True,
             extra_http_headers={"Accept-Language": "it-IT,it;q=0.9,en;q=0.8"},

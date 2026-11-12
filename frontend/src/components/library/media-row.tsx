@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/i18n";
 
 export interface MediaRowProps {
   title: string;
@@ -24,6 +25,7 @@ export interface MediaRowProps {
 
 /** Tappable list row (tap = cast) with an overflow menu for secondary actions. */
 export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onDelete, disabled }: MediaRowProps) {
+  const t = useT();
   const hasMenu = onQueue || onFavorite || onDelete;
   return (
     <div className="flex items-center gap-1 rounded-xl transition-colors hover:bg-muted/50">
@@ -31,7 +33,7 @@ export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavori
         type="button"
         onClick={onCast}
         disabled={disabled}
-        aria-label={`Trasmetti ${title}`}
+        aria-label={t("captured.castName", { name: title })}
         className="flex min-h-16 min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left active:bg-muted"
       >
         <div className="relative">
@@ -47,23 +49,23 @@ export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavori
       </button>
       {hasMenu && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={`Azioni per ${title}`} />}>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("playlists.actionsFor", { name: title })} />}>
             <MoreVertical className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             {onQueue && (
               <DropdownMenuItem onClick={onQueue}>
-                <ListPlus className="size-4" /> Aggiungi alla coda
+                <ListPlus className="size-4" /> {t("media.addToQueue")}
               </DropdownMenuItem>
             )}
             {onFavorite && (
               <DropdownMenuItem onClick={onFavorite}>
-                <Star className="size-4" /> Aggiungi ai preferiti
+                <Star className="size-4" /> {t("media.addToFavorites")}
               </DropdownMenuItem>
             )}
             {onDelete && (
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="size-4" /> Elimina
+                <Trash2 className="size-4" /> {t("common.delete")}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

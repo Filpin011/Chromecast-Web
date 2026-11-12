@@ -24,7 +24,8 @@ export function PageHeader({
       <div className="mx-auto flex min-h-14 max-w-5xl items-center gap-2 px-4 py-2 md:px-8 md:py-4">
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-heading text-2xl font-bold tracking-tight md:text-3xl">{title}</h1>
-          {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+          {/* the subtitle wraps: translated copy is longer than the 360px phone width allows on one line */}
+          {subtitle && <p className="text-sm text-balance text-muted-foreground">{subtitle}</p>}
         </div>
         {actions}
         <DeviceButton className="md:hidden" />

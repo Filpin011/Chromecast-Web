@@ -50,9 +50,13 @@ def test_errors(client, mock_http):
     mock_http.get("https://lists.example.com/hls.m3u").respond(200, text=LIVE_MEDIA)
     r = client.post("/api/playlists", json={"url": "https://lists.example.com/hls.m3u"})
     assert r.status_code == 400 and r.json()["code"] == "unsupported_source"
+    assert r.json()["reason"] == "hls_not_playlist"
     mock_http.get("https://lists.example.com/404.m3u").respond(404)
     r = client.post("/api/playlists", json={"url": "https://lists.example.com/404.m3u"})
     assert r.status_code == 502 and r.json()["code"] == "resolve_failed"
+    # stable reason + params let the UI explain it in its own language; detail stays English
+    assert r.json()["reason"] == "upstream_http" and r.json()["params"] == {"status": 404}
+    assert r.json()["detail"] == "Upstream returned HTTP 404"
     r = client.post("/api/playlists", json={"content": "just text"})
     assert r.status_code == 400
     for method, path in [("get", "/api/playlists/x"), ("get", "/api/playlists/x/channels"),

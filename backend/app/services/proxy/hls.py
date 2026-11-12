@@ -179,3 +179,114 @@ def segment_format(media_text: str) -> str | None:
                 return "fmp4"
             return PACKED_AUDIO_FORMATS.get(ext)
     return None
+
+
+ATTR_RE = re.compile(r'([A-Z0-9-]+)=("[^"]*"|[^,]*)')
+
+
+def _tag_attrs(line: str) -> dict[str, str]:
+    return {k: v.strip('"') for k, v in ATTR_RE.findall(line.partition(":")[2])}
+
+
+def audio_rendition_url(master_text: str, base_url: str) -> str | None:
+    """Media playlist of the audio rendition the receiver will pick for the first variant.
+
+    Separate ``#EXT-X-MEDIA:TYPE=AUDIO`` renditions (YouTube, many CDNs) can use a
+    different container than the video variant (e.g. packed ID3+ADTS AAC next to TS
+    video), and ``hlsSegmentFormat`` describes the *audio* segments.
+    """
+    lines = [ln.strip() for ln in master_text.splitlines()]
+    group = next(
+        (_tag_attrs(ln).get("AUDIO") for ln in lines if ln.startswith("#EXT-X-STREAM-INF")),
+        None,
+    )
+    renditions = [
+        a for ln in lines if ln.startswith("#EXT-X-MEDIA:")
+        if (a := _tag_attrs(ln)).get("TYPE") == "AUDIO" and a.get("URI")
+    ]
+    if group:
+        renditions = [a for a in renditions if a.get("GROUP-ID") == group] or renditions
+    if not renditions:
+        return None
+    best = next((a for a in renditions if a.get("DEFAULT", "").upper() == "YES"), renditions[0])
+    return urljoin(base_url, best["URI"])
+
+
+# Video codec family by RFC 6381 sample entry. The Cast LOAD carries one segment format
+# for the whole stream, but masters may mix containers across variants (YouTube: avc1 in
+# MPEG-TS up to 1080p next to vp09 in fMP4 up to 2160p), so a receiver switching variants
+# would parse fMP4 as TS. The family is the best container hint a master offers.
+VIDEO_CODEC_FAMILIES = {
+    "avc1": "avc", "avc3": "avc",
+    "hvc1": "hevc", "hev1": "hevc", "dvh1": "hevc", "dvhe": "hevc",
+    "vp09": "vp9", "vp9": "vp9", "vp08": "vp8", "vp8": "vp8",
+    "av01": "av1", "dav1": "av1",
+}
+
+
+def _video_family(attrs: dict[str, str]) -> str | None:
+    """Video codec family of a variant from its CODECS attribute; None for audio-only/unknown."""
+    for codec in attrs.get("CODECS", "").split(","):
+        family = VIDEO_CODEC_FAMILIES.get(codec.strip().split(".", 1)[0].lower())
+        if family:
+            return family
+    return None
+
+
+def filter_variants(master_text: str) -> str:
+    """Keep only the variants whose video codec family matches the first variant's.
+
+    The first variant is the one probed for ``hlsSegmentFormat``. Variants that are
+    audio-only or have no CODECS are kept (nothing to compare). A master with a single
+    video family is returned unchanged.
+    """
+    lines = master_text.splitlines()
+    variants = [_video_family(_tag_attrs(ln)) for ln in lines if ln.startswith("#EXT-X-STREAM-INF")]
+    families = {f for f in variants if f}
+    if len(families) < 2:
+        return master_text
+    keep = next(f for f in variants if f) if variants[0] is None else variants[0]
+    out: list[str] = []
+    drop_uri = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(("#EXT-X-STREAM-INF", "#EXT-X-I-FRAME-STREAM-INF")):
+            family = _video_family(_tag_attrs(stripped))
+            if family is not None and family != keep:
+                drop_uri = stripped.startswith("#EXT-X-STREAM-INF")
+                continue
+        elif drop_uri and stripped and not stripped.startswith("#"):
+            drop_uri = False
+            continue
+        out.append(line)
+    result = "\n".join(out)
+    return result + "\n" if master_text.endswith("\n") else result
+
+
+# Enough for the ID3 timestamp tag packed-audio segments start with + a frame header.
+SEGMENT_SNIFF_BYTES = 4096
+FMP4_BOXES = (b"ftyp", b"styp", b"moof", b"moov", b"sidx", b"emsg", b"prft")
+
+
+def sniff_segment(head: bytes) -> str | None:
+    """Container of an HLS segment from its first bytes, regardless of its file name:
+    "ts", "fmp4", "aac", "mp3", "ac3", "e_ac3", or None when unrecognised."""
+    if len(head) >= 8 and head[4:8] in FMP4_BOXES:
+        return "fmp4"
+    if head[:1] == b"\x47" and (len(head) <= 188 or head[188:189] == b"\x47"):
+        return "ts"
+    pos = 0
+    if head[:3] == b"ID3" and len(head) >= 10:
+        # ID3v2 header: "ID3", version(2), flags(1), syncsafe size(4); optional 10-byte footer
+        size = (head[6] & 0x7F) << 21 | (head[7] & 0x7F) << 14 | (head[8] & 0x7F) << 7 | (head[9] & 0x7F)
+        pos = 10 + size + (10 if head[5] & 0x10 else 0)
+    frame = head[pos : pos + 6]
+    if len(frame) < 6:
+        return None
+    if frame[0] == 0xFF and frame[1] & 0xF6 == 0xF0:  # ADTS: sync 0xFFF, layer 00
+        return "aac"
+    if frame[0] == 0xFF and frame[1] & 0xE0 == 0xE0 and frame[1] & 0x06:  # MPEG audio, layer I-III
+        return "mp3"
+    if frame[:2] == b"\x0b\x77":  # (E-)AC-3 sync word; bsid > 10 means E-AC-3
+        return "e_ac3" if frame[5] >> 3 > 10 else "ac3"
+    return None

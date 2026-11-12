@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { ControlAction, PlayerState } from "@/lib/api/types";
 import { haptic } from "@/lib/haptics";
 import { extrapolatePosition, optimisticPatch } from "@/lib/player";
+import { t } from "@/i18n";
 import { errorMessage } from "@/lib/query";
 import { effectiveReceivedAt, selectPlayer, useAppStore } from "@/stores/app-store";
 
@@ -25,7 +26,7 @@ export function useCommand(deviceId: string | null | undefined): CommandRunner {
   const run = useCallback(
     async (action: ControlAction, value?: number) => {
       if (!deviceId) {
-        toast.error("Nessun dispositivo connesso");
+        toast.error(t("errors.not_connected"));
         return null;
       }
       haptic();
@@ -41,7 +42,7 @@ export function useCommand(deviceId: string | null | undefined): CommandRunner {
         if (res) useAppStore.getState().applyPlayer(res);
         return res;
       } catch (err) {
-        toast.error(errorMessage(err, "Comando non riuscito"));
+        toast.error(errorMessage(err, t("player.commandFailed")));
         return null;
       } finally {
         revert();

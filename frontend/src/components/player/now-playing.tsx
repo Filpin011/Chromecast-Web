@@ -22,6 +22,7 @@ import { useNow } from "@/hooks/use-now";
 import { api } from "@/lib/api";
 import type { Device, PlayerState } from "@/lib/api/types";
 import { formatTime } from "@/lib/format";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { extrapolatePosition, isLive } from "@/lib/player";
 import { errorMessage } from "@/lib/query";
@@ -35,15 +36,21 @@ import { SeekBar } from "./seek-bar";
 import { TrackPicker } from "./track-picker";
 import { VolumeControl } from "./volume-control";
 
+/** Shown only when the transport row is at least 384px wide (2×44 + 4×48 + 72+8 + 6×4 gap = 384). */
+const NARROW_HIDDEN = "hidden @min-[384px]/transport:inline-flex";
+
 function SkipButton({
   seconds,
   onClick,
   disabled,
+  className,
 }: {
   seconds: number;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
+  const t = useT();
   const back = seconds < 0;
   const big = Math.abs(seconds) >= 30;
   const Icon = back ? (big ? Undo2 : RotateCcw) : big ? Redo2 : RotateCw;
@@ -52,9 +59,9 @@ function SkipButton({
       variant="ghost"
       size="icon-lg"
       disabled={disabled}
-      aria-label={`${back ? "Indietro" : "Avanti"} ${Math.abs(seconds)} secondi`}
+      aria-label={t.plural(back ? "player.skipBack" : "player.skipForward", Math.abs(seconds))}
       onClick={onClick}
-      className="relative rounded-full"
+      className={cn("relative rounded-full", className)}
     >
       <Icon className="size-6" />
       <span className="absolute bottom-0.5 text-[0.6rem] font-bold tabular-nums">{Math.abs(seconds)}</span>
@@ -71,6 +78,7 @@ export interface NowPlayingContentProps {
 
 /** Full "Now Playing" UI. Pure presentational + commands; wrapped by the sheet. */
 export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPlayingContentProps) {
+  const t = useT();
   const { run } = useCommand(device.id);
   const [tab, setTab] = useState<"player" | "queue">("player");
   const live = isLive(player);
@@ -86,7 +94,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
     try {
       useAppStore.getState().applyPlayer(await api.player.setTracks(device.id, ids));
     } catch (e) {
-      toast.error(errorMessage(e, "Cambio traccia non riuscito"));
+      toast.error(errorMessage(e, t("player.trackFailed")));
     }
   };
 
@@ -94,7 +102,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
     haptic();
     try {
       useAppStore.getState().applyPlayer(await api.player.showIdle(device.id));
-      toast.success("Immagine di attesa mostrata");
+      toast.success(t("player.idleShown"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -104,12 +112,12 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-1 px-2 pt-2">
         {onClose && (
-          <Button variant="ghost" size="icon" aria-label="Chiudi" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
             <ChevronDown className="size-6" />
           </Button>
         )}
         <div className="min-w-0 flex-1 text-center">
-          <p className="text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase">In riproduzione su</p>
+          <p className="text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase">{t("player.playingOn")}</p>
           <p className="truncate text-sm font-semibold">{device.name}</p>
         </div>
         <TrackPicker tracks={player.tracks} activeIds={player.active_track_ids} onChange={setTracks} />
@@ -117,18 +125,18 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
       </div>
 
       <div className="mx-auto mt-2 grid w-full max-w-xs grid-cols-2 gap-1 rounded-xl bg-muted p-1 text-sm">
-        {(["player", "queue"] as const).map((t) => (
+        {(["player", "queue"] as const).map((id) => (
           <button
-            key={t}
+            key={id}
             type="button"
-            onClick={() => setTab(t)}
-            aria-pressed={tab === t}
+            onClick={() => setTab(id)}
+            aria-pressed={tab === id}
             className={cn(
               "flex h-9 items-center justify-center gap-1.5 rounded-lg font-medium transition-all",
-              tab === t ? "bg-background shadow-sm" : "text-muted-foreground",
+              tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
             )}
           >
-            {t === "player" ? "Player" : <><ListOrdered className="size-4" /> Coda {player.queue.length > 0 && `(${player.queue.length})`}</>}
+            {id === "player" ? t("player.tabPlayer") : <><ListOrdered className="size-4" /> {t("common.queue")} {player.queue.length > 0 && `(${player.queue.length})`}</>}
           </button>
         ))}
       </div>
@@ -150,12 +158,12 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
             <div className="space-y-1">
               <div className="flex items-start gap-2">
                 <h2 className="line-clamp-2 flex-1 text-xl font-bold tracking-tight">
-                  {idleImage ? "Immagine di attesa" : active ? (player.title ?? "Senza titolo") : "Niente in riproduzione"}
+                  {idleImage ? t("settings.idleImage") : active ? (player.title ?? t("player.untitled")) : t("player.nothingPlaying")}
                 </h2>
                 {active && live && <LiveBadge className="mt-1" />}
               </div>
               <p className="text-sm text-muted-foreground">
-                {active ? (player.player_state === "BUFFERING" ? "Caricamento…" : player.app_name ?? "Default Media Receiver") : idleImage ? "Mostrata sul TV" : "In attesa"}
+                {active ? (player.player_state === "BUFFERING" ? t("player.loading") : player.app_name ?? "Default Media Receiver") : idleImage ? t("player.shownOnTv") : t("player.idle")}
               </p>
             </div>
 
@@ -166,18 +174,23 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
                 <span className="font-mono text-xs text-muted-foreground tabular-nums">{formatTime(position)}</span>
                 <Button variant="secondary" size="sm" onClick={() => run("go_live")} className="gap-1.5">
                   <Radio className="size-4 text-live" />
-                  Vai al live
+                  {t("player.goLive")}
                 </Button>
               </div>
             ) : null}
 
-            <div className="flex items-center justify-center gap-1">
+            {/* Seven controls need 384px: the ±10 s pair only shows when the row (a container) is
+                that wide, so Previous / Next never get pushed off a 360px phone. */}
+            <div
+              data-testid="transport-row"
+              className="@container/transport flex items-center justify-center gap-1"
+            >
               {player.queue.length > 0 || active ? (
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Precedente"
-                  title="Precedente (o ricomincia)"
+                  aria-label={t("player.previous")}
+                  title={t("player.previousHint")}
                   onClick={() => run("previous")}
                   disabled={!active}
                 >
@@ -185,7 +198,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
                 </Button>
               ) : null}
               <SkipButton seconds={live ? -10 : -30} onClick={() => run("seek_relative", live ? -10 : -30)} disabled={!canSeek} />
-              {!live && <SkipButton seconds={-10} onClick={() => run("seek_relative", -10)} disabled={!canSeek} />}
+              {!live && <SkipButton seconds={-10} onClick={() => run("seek_relative", -10)} disabled={!canSeek} className={NARROW_HIDDEN} />}
               <PlayPauseButton
                 size="lg"
                 state={active ? player.player_state : "PAUSED"}
@@ -193,10 +206,10 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
                 disabled={idleImage}
                 className="mx-1"
               />
-              {!live && <SkipButton seconds={10} onClick={() => run("seek_relative", 10)} disabled={!canSeek} />}
+              {!live && <SkipButton seconds={10} onClick={() => run("seek_relative", 10)} disabled={!canSeek} className={NARROW_HIDDEN} />}
               <SkipButton seconds={live ? 10 : 30} onClick={() => run("seek_relative", live ? 10 : 30)} disabled={!canSeek} />
               {player.queue.length > 0 || active ? (
-                <Button variant="ghost" size="icon" aria-label="Successivo" onClick={() => run("next")} disabled={!player.queue.length}>
+                <Button variant="ghost" size="icon" aria-label={t("player.next")} onClick={() => run("next")} disabled={!player.queue.length}>
                   <SkipForward className="size-5" fill="currentColor" />
                 </Button>
               ) : null}
@@ -207,7 +220,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
             <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary" size="lg" onClick={() => run("stop")} disabled={!active} className="gap-2">
                 <Square className="size-4" fill="currentColor" />
-                Stop
+                {t("player.stop")}
               </Button>
               <Button
                 variant="secondary"
@@ -216,7 +229,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
                 className={cn("gap-2", player.showing_idle_image && "text-primary")}
               >
                 <ImageIcon className="size-4" />
-                Immagine attesa
+                {t("player.idleImageShort")}
               </Button>
             </div>
           </div>

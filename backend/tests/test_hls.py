@@ -2,6 +2,7 @@ from app.services.proxy.hls import (
     best_resolution,
     decode_url,
     encode_url,
+    filter_variants,
     first_variant_url,
     is_hls_playlist,
     is_live_media_playlist,
@@ -10,7 +11,7 @@ from app.services.proxy.hls import (
     quality_label,
     rewrite_playlist,
 )
-from tests.fakes import LIVE_MEDIA, MASTER, VOD_MEDIA
+from tests.fakes import LIVE_MEDIA, MASTER, MIXED_MASTER, VOD_MEDIA
 
 BASE = "https://cdn.example.com/live/stream/master.m3u8?token=abc"
 T = "tok123"
@@ -107,3 +108,52 @@ def test_segment_format():
     assert segment_format(head + "#EXTINF:4,\nseg1.ts\n") is None
     assert segment_format(head + '#EXT-X-MAP:URI="init.ts"\n#EXTINF:4,\nseg1.ts\n') is None
     assert segment_format("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nlow.m3u8\n") is None  # master
+
+
+def test_audio_rendition_url_prefers_default_of_the_variant_group():
+    from app.services.proxy.hls import audio_rendition_url
+
+    master = (
+        "#EXTM3U\n"
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="lo",NAME="x",DEFAULT=YES,URI="lo/a.m3u8"\n'
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="hi",NAME="en",DEFAULT=NO,URI="hi/en.m3u8"\n'
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="hi",NAME="it",DEFAULT=YES,URI="hi/it.m3u8"\n'
+        '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="hi",NAME="s",DEFAULT=YES,URI="subs.m3u8"\n'
+        '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="hi"\nv.m3u8\n'
+    )
+    assert audio_rendition_url(master, "https://c/m/master.m3u8") == "https://c/m/hi/it.m3u8"
+    # muxed audio (no URI) or no renditions at all
+    assert audio_rendition_url('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="x"\n', "https://c/") is None
+    assert audio_rendition_url("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n", "https://c/") is None
+
+
+def test_sniff_segment():
+    from app.services.proxy.hls import sniff_segment
+
+    id3 = b"ID3\x04\x00\x00\x00\x00\x00\x0a" + b"\x00" * 10
+    assert sniff_segment((b"\x47" + b"\x00" * 187) * 2) == "ts"
+    assert sniff_segment(b"\x00\x00\x00\x18styp" + b"\x00" * 16) == "fmp4"
+    assert sniff_segment(b"\x00\x00\x00\x18moof" + b"\x00" * 16) == "fmp4"
+    assert sniff_segment(id3 + b"\xff\xf1\x50\x80\x2e\x7f") == "aac"
+    assert sniff_segment(b"\xff\xf9\x50\x80\x2e\x7f") == "aac"  # MPEG-2 ADTS, no ID3
+    assert sniff_segment(id3 + b"\xff\xfb\x90\x64\x00\x00") == "mp3"
+    assert sniff_segment(id3 + b"\x0b\x77\x00\x00\x00\x40") == "ac3"  # bsid 8
+    assert sniff_segment(id3 + b"\x0b\x77\x00\x00\x00\x80") == "e_ac3"  # bsid 16
+    assert sniff_segment(b"") is None
+    assert sniff_segment(b"<html>not media</html>") is None
+
+
+def test_filter_variants_keeps_the_first_variants_codec_family():
+    """YouTube mixes avc1/TS and vp09/fMP4 variants; the LOAD describes one container."""
+    out = filter_variants(MIXED_MASTER)
+    uris = [ln for ln in out.splitlines() if ln and not ln.startswith("#")]
+    assert uris == ["avc/720/index.m3u8", "avc/1080/index.m3u8", "audio/index.m3u8"]
+    assert "vp09" not in out and 'URI="avc/iframes.m3u8"' in out
+    assert "#EXT-X-INDEPENDENT-SEGMENTS" in out and out.endswith("\n")
+    assert best_resolution(out) == (1920, 1080)
+    # single family / no CODECS: untouched
+    assert filter_variants(MASTER) == MASTER
+    assert filter_variants(filter_variants(MIXED_MASTER)) == out
+    vp9_first = MIXED_MASTER.replace("avc1.4d401f", "vp09.00.31.08")
+    assert [ln for ln in filter_variants(vp9_first).splitlines() if ln and not ln.startswith("#")] == [
+        "avc/720/index.m3u8", "vp9/2160/index.m3u8", "audio/index.m3u8"]

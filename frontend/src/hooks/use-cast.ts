@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Channel, PlayerState, Settings, SourceKind } from "@/lib/api/types";
 import { haptic } from "@/lib/haptics";
+import { t } from "@/i18n";
 import { errorMessage, qk } from "@/lib/query";
 import { selectActiveDevice, useAppStore } from "@/stores/app-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -62,20 +63,20 @@ export function useCast() {
       if (!deviceId) return null;
       setBusy(true);
       haptic(12);
-      const id = toast.loading(enqueue ? "Aggiunta alla coda…" : `Avvio su ${deviceName(deviceId)}…`, {
+      const id = toast.loading(enqueue ? t("cast.adding") : t("cast.starting", { device: deviceName(deviceId) }), {
         description: label,
       });
       try {
         const p = await fn(deviceId);
         useAppStore.getState().applyPlayer(p);
-        toast.success(enqueue ? "Aggiunto alla coda" : `In riproduzione su ${deviceName(deviceId)}`, {
+        toast.success(enqueue ? t("cast.added") : t("cast.playingOn", { device: deviceName(deviceId) }), {
           id,
           description: p.title ?? label,
         });
         qc.invalidateQueries({ queryKey: qk.history });
         return p;
       } catch (err) {
-        toast.error(errorMessage(err, "Cast non riuscito"), { id, description: label });
+        toast.error(errorMessage(err, t("cast.failed")), { id, description: label });
         return null;
       } finally {
         setBusy(false);
@@ -102,7 +103,7 @@ export function useCast() {
   const castCaptured = useCallback(
     (sessionId: string, streamId: string, opts: { title?: string; enqueue?: boolean } = {}) =>
       withDevice(
-        opts.title ?? "Stream rilevato",
+        opts.title ?? t("captured.fallbackTitle"),
         (deviceId) =>
           api.browser.cast(sessionId, { stream_id: streamId, device_id: deviceId, enqueue: !!opts.enqueue }),
         opts.enqueue,

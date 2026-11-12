@@ -55,6 +55,14 @@ describe("format", () => {
     expect(formatBytes(5 * 1024 ** 3)).toBe("5.0 GB");
     expect(hostOf("https://www.example.com/x")).toBe("example.com");
   });
+
+  it("formats sizes with the locale's decimal separator", () => {
+    expect(formatBytes(1.5 * 1024 ** 3, "en")).toBe("1.5 GB");
+    expect(formatBytes(1.5 * 1024 ** 3, "it")).toBe("1,5 GB");
+    expect(formatBytes(512, "it")).toBe("512 B");
+    expect(formatBytes(250 * 1024 ** 2, "it")).toBe("250 MB");
+    expect(formatBytes(null, "it")).toBe("");
+  });
 });
 
 describe("player helpers", () => {
@@ -125,8 +133,8 @@ describe("errorMessage", () => {
   it("translates contract error codes and falls back to the detail", async () => {
     const { ApiError } = await import("@/lib/api");
     const { errorMessage } = await import("@/lib/query");
-    expect(errorMessage(new ApiError(409, "Device not connected", "not_connected"))).toBe("Nessun dispositivo connesso");
-    expect(errorMessage(new ApiError(429, "too many", "browser_limit"))).toBe("Troppe sessioni browser aperte");
+    expect(errorMessage(new ApiError(409, "Device not connected", "not_connected"))).toBe("No device connected");
+    expect(errorMessage(new ApiError(429, "too many", "browser_limit"))).toBe("Too many browser sessions open");
     expect(errorMessage(new ApiError(500, "boom", "weird_code"))).toBe("boom");
     expect(errorMessage(new ApiError(500, ""), "Fallito")).toBe("Fallito");
     expect(errorMessage("x", "Fallito")).toBe("Fallito");

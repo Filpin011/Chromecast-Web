@@ -1,3 +1,5 @@
+import type { Locale, MessageKey } from "@/i18n";
+import { currentLocale, formatNumber, formatRelativeTime } from "@/i18n";
 import type { SourceKind } from "@/lib/api/types";
 
 export function formatTime(totalSeconds: number | null | undefined): string {
@@ -10,7 +12,8 @@ export function formatTime(totalSeconds: number | null | undefined): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
-export function formatBytes(bytes: number | null | undefined): string {
+/** "1.5 GB" / "1,5 GB": the number uses the UI locale's separators. */
+export function formatBytes(bytes: number | null | undefined, locale: Locale = currentLocale()): string {
   if (bytes == null || !Number.isFinite(bytes)) return "";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let v = bytes;
@@ -19,21 +22,14 @@ export function formatBytes(bytes: number | null | undefined): string {
     v /= 1024;
     i++;
   }
-  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+  const digits = v < 10 && i > 0 ? 1 : 0;
+  const n = formatNumber(v, { minimumFractionDigits: digits, maximumFractionDigits: digits }, locale);
+  return `${n} ${units[i]}`;
 }
 
-const rtf = typeof Intl !== "undefined" ? new Intl.RelativeTimeFormat("it", { numeric: "auto" }) : null;
-
+/** "3 minutes ago" / "3 minuti fa" in the current UI language. */
 export function formatRelative(iso: string, now: number = Date.now()): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t) || !rtf) return "";
-  const diff = Math.round((t - now) / 1000);
-  const abs = Math.abs(diff);
-  if (abs < 60) return rtf.format(diff, "second");
-  if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
-  if (abs < 86400) return rtf.format(Math.round(diff / 3600), "hour");
-  if (abs < 86400 * 30) return rtf.format(Math.round(diff / 86400), "day");
-  return new Date(t).toLocaleDateString("it");
+  return formatRelativeTime(iso, now);
 }
 
 export function hostOf(url: string): string {
@@ -55,10 +51,11 @@ export function shortUrl(url: string, max = 60): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-export const SOURCE_LABEL: Record<SourceKind, string> = {
-  direct: "Stream",
-  webpage: "Pagina web",
-  m3u: "Playlist",
-  ytdlp: "Video",
-  local: "File locale",
+/** Dictionary key of each source kind's label (translate with `t(SOURCE_LABEL_KEY[kind])`). */
+export const SOURCE_LABEL_KEY: Record<SourceKind, MessageKey> = {
+  direct: "source.direct",
+  webpage: "source.webpage",
+  m3u: "source.m3u",
+  ytdlp: "source.ytdlp",
+  local: "source.local",
 };

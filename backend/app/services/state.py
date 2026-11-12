@@ -111,8 +111,15 @@ class StateHub:
             except Exception:  # pragma: no cover
                 log.exception("state listener failed")
 
-    def toast(self, level: str, message: str) -> None:
-        msg = {"type": "toast", "level": level, "message": message}
+    def toast(
+        self, level: str, message: str, code: str | None = None, params: dict[str, str | int] | None = None
+    ) -> None:
+        """Broadcast a notification. ``message`` is English (fallback); clients translate by
+        ``code`` (stable, see docs/ARCHITECTURE.md) interpolating ``params``."""
+        msg: dict[str, Any] = {"type": "toast", "level": level, "message": message}
+        if code:
+            msg["code"] = code
+            msg["params"] = params or {}
         for q in list(self._clients):
             self._put(q, msg)
 

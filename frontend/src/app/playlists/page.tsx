@@ -16,9 +16,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useDeletePlaylist, usePlaylists, useRefreshPlaylist } from "@/hooks/queries";
+import { useT } from "@/i18n";
 import { formatRelative, hostOf } from "@/lib/format";
 
 export default function PlaylistsPage() {
+  const t = useT();
   const [importOpen, setImportOpen] = useState(false);
   const router = useRouter();
   const playlists = usePlaylists();
@@ -28,12 +30,12 @@ export default function PlaylistsPage() {
   return (
     <>
       <PageHeader
-        title="Playlist"
-        subtitle="IPTV e liste M3U"
+        title={t("playlists.title")}
+        subtitle={t("playlists.subtitle")}
         actions={
-          <Button onClick={() => setImportOpen(true)} className="gap-1.5 rounded-xl" aria-label="Importa playlist">
+          <Button onClick={() => setImportOpen(true)} className="gap-1.5 rounded-xl" aria-label={t("playlists.import")}>
             <Plus className="size-4" />
-            <span className="hidden sm:inline">Importa</span>
+            <span className="hidden sm:inline">{t("playlists.importShort")}</span>
           </Button>
         }
       />
@@ -47,11 +49,11 @@ export default function PlaylistsPage() {
         ) : !playlists.data?.length ? (
           <EmptyState
             icon={ListVideo}
-            title="Nessuna playlist"
-            description="Importa una lista M3U dal tuo provider IPTV per vedere i canali e trasmetterli con un tocco."
+            title={t("playlists.empty")}
+            description={t("playlists.emptyHint")}
             action={
               <Button onClick={() => setImportOpen(true)} size="lg" className="gap-1.5 rounded-xl">
-                <Plus className="size-4" /> Importa playlist
+                <Plus className="size-4" /> {t("playlists.import")}
               </Button>
             }
           />
@@ -71,31 +73,38 @@ export default function PlaylistsPage() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{p.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {p.channel_count.toLocaleString("it")} canali · {p.groups.length} gruppi
+                      {t.plural("playlists.channels", p.channel_count)} · {t.plural("playlists.groups", p.groups.length)}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground/80">
-                      {p.source_url ? hostOf(p.source_url) : "da file"} · aggiornata {formatRelative(p.updated_at)}
+                    {/* only the host truncates: the update time is the useful part and must stay visible */}
+                    <p className="flex min-w-0 text-xs text-muted-foreground/80">
+                      <span data-testid="playlist-source" className="min-w-0 truncate">
+                        {p.source_url ? hostOf(p.source_url) : t("playlists.fromFile")}
+                      </span>
+                      <span data-testid="playlist-updated" className="shrink-0 whitespace-pre">
+                        {" · "}
+                        {t("playlists.updated", { when: formatRelative(p.updated_at) })}
+                      </span>
                     </p>
                   </div>
                 </Link>
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={`Azioni per ${p.name}`} />}>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("playlists.actionsFor", { name: p.name })} />}>
                     <MoreVertical className="size-4" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     {p.source_url && (
                       <DropdownMenuItem onClick={() => refresh.mutate(p.id)}>
-                        <RefreshCw className="size-4" /> Aggiorna
+                        <RefreshCw className="size-4" /> {t("playlists.refresh")}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => {
-                        if (window.confirm(`Eliminare “${p.name}”?`)) del.mutate(p.id);
+                        if (window.confirm(t("playlists.deleteConfirm", { name: p.name }))) del.mutate(p.id);
                       }}
                     >
-                      <Trash2 className="size-4" /> Elimina
+                      <Trash2 className="size-4" /> {t("common.delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

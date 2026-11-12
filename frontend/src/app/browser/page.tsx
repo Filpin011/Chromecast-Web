@@ -7,9 +7,10 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BrowserStart } from "@/components/browser/browser-start";
 import { BrowserWorkspace } from "@/components/browser/browser-workspace";
+import { useT } from "@/i18n";
 import { api, ApiError } from "@/lib/api";
 import type { BrowserSession } from "@/lib/api/types";
-import { fitViewport, measureScreen, type ViewportMode } from "@/lib/browser-session";
+import { fitViewport, initialViewportMode, measureScreen, type ViewportMode } from "@/lib/browser-session";
 import { errorMessage, qk } from "@/lib/query";
 import { readStorage, writeStorage } from "@/lib/storage";
 
@@ -18,11 +19,12 @@ const MODE_KEY = "cw.browser.mode";
 const homeKey = (id: string) => `cw.browser.home.${id}`;
 
 function BrowserPageInner() {
+  const t = useT();
   const params = useSearchParams();
   const router = useRouter();
   const qc = useQueryClient();
   const [current, setCurrentState] = useState<BrowserSession | null>(null);
-  const [mode, setModeState] = useState<ViewportMode>(() => (readStorage(MODE_KEY) === "desktop" ? "desktop" : "mobile"));
+  const [mode, setModeState] = useState<ViewportMode>(() => initialViewportMode(readStorage(MODE_KEY), measureScreen()));
   const [opening, setOpening] = useState(false);
   /** Focus the address field when the start screen is reached through "+" (new session). */
   const [focusUrl, setFocusUrl] = useState(false);
@@ -53,15 +55,15 @@ function BrowserPageInner() {
         writeStorage(homeKey(s.id), home ?? url);
         setCurrent(s);
       } catch (e) {
-        toast.error(errorMessage(e, "Impossibile aprire la pagina"), {
-          description: "Al massimo 2 sessioni contemporanee: chiudine una dalla schermata Browser.",
+        toast.error(errorMessage(e, t("browser.openFailed")), {
+          description: t("browser.openFailedHint"),
         });
       } finally {
         setOpening(false);
         qc.invalidateQueries({ queryKey: qk.browserSessions });
       }
     },
-    [mode, qc, setCurrent],
+    [mode, qc, setCurrent, t],
   );
 
   // Deep link (?url=…) opens a session; otherwise resume the last one.
@@ -136,7 +138,7 @@ function BrowserPageInner() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
             <Loader2 className="size-8 animate-spin text-primary" />
-            Apertura pagina sul server…
+            {t("browser.opening")}
           </div>
         </div>
       )}

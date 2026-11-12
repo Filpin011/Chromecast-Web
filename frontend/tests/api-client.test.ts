@@ -59,7 +59,7 @@ describe("HttpClient", () => {
 
   it("handles FastAPI validation errors and non-JSON bodies", async () => {
     const http = new HttpClient("", vi.fn().mockResolvedValue(jsonResponse({ detail: [{ loc: ["body"] }] }, 422)));
-    await expect(http.get("/x")).rejects.toMatchObject({ status: 422, detail: "Richiesta non valida" });
+    await expect(http.get("/x")).rejects.toMatchObject({ status: 422, detail: "Invalid request" });
     const http2 = new HttpClient("", vi.fn().mockResolvedValue(new Response("boom", { status: 500, statusText: "Server Error" })));
     await expect(http2.get("/x")).rejects.toMatchObject({ status: 500, detail: "Server Error" });
   });

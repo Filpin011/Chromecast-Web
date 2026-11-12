@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
 import type { CapturedStream } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { hostOf, shortUrl } from "@/lib/format";
 import { StreamBadges } from "./stream-meta";
 
@@ -27,6 +28,7 @@ export function CapturedList({
   onBookmark?: (s: CapturedStream) => void;
   busy?: boolean;
 }) {
+  const t = useT();
   if (!streams.length) {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm text-muted-foreground">
@@ -34,15 +36,15 @@ export function CapturedList({
           <Radar className="size-6 animate-pulse" />
         </div>
         <p>
-          In ascolto del traffico della pagina…
+          {t("captured.listening")}
           <br />
-          Avvia il video nella pagina: gli stream compariranno qui.
+          {t("captured.listeningHint")}
         </p>
       </div>
     );
   }
   return (
-    <ul className="space-y-2" aria-label="Stream catturati">
+    <ul className="space-y-2" aria-label={t("captured.label")}>
       <AnimatePresence initial={false}>
         {streams.map((s) => (
           <motion.li
@@ -66,20 +68,20 @@ export function CapturedList({
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" className="gap-1.5" onClick={() => onPreview(s)} aria-label={`Anteprima ${shortUrl(s.url, 30)}`}>
-                <Play className="size-4" /> Anteprima
+              <Button variant="secondary" className="gap-1.5" onClick={() => onPreview(s)} aria-label={t("captured.previewName", { name: shortUrl(s.url, 30) })}>
+                <Play className="size-4" /> {t("common.preview")}
               </Button>
-              <Button className="gap-1.5" disabled={busy} onClick={() => onCast(s)} aria-label={`Trasmetti ${shortUrl(s.url, 30)}`}>
-                <Cast className="size-4" /> Cast
+              <Button className="gap-1.5" disabled={busy} onClick={() => onCast(s)} aria-label={t("captured.castName", { name: shortUrl(s.url, 30) })}>
+                <Cast className="size-4" /> {t("common.cast")}
               </Button>
               {onQueue && (
-                <Button variant="secondary" className="gap-1.5" disabled={busy} onClick={() => onQueue(s)} aria-label={`Aggiungi alla coda ${shortUrl(s.url, 30)}`}>
-                  <ListPlus className="size-4" /> Coda
+                <Button variant="secondary" className="gap-1.5" disabled={busy} onClick={() => onQueue(s)} aria-label={t("captured.queueName", { name: shortUrl(s.url, 30) })}>
+                  <ListPlus className="size-4" /> {t("common.queue")}
                 </Button>
               )}
               {onBookmark && (
-                <Button variant="secondary" className="gap-1.5" onClick={() => onBookmark(s)} aria-label={`Aggiungi ai preferiti ${shortUrl(s.url, 30)}`}>
-                  <Bookmark className="size-4" /> Preferito
+                <Button variant="secondary" className="gap-1.5" onClick={() => onBookmark(s)} aria-label={t("captured.favoriteName", { name: shortUrl(s.url, 30) })}>
+                  <Bookmark className="size-4" /> {t("common.favorite")}
                 </Button>
               )}
             </div>

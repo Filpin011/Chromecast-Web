@@ -4,9 +4,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useConnection } from "@/hooks/use-app-state";
+import { useT } from "@/i18n";
 
 /** Small banner shown when the live connection to the server drops (after a grace period). */
 export function ConnectionBanner() {
+  const tr = useT();
   const connection = useConnection();
   const down = connection === "closed" || connection === "connecting";
   const [show, setShow] = useState(false);
@@ -30,7 +32,7 @@ export function ConnectionBanner() {
         >
           <div className="flex items-center justify-center gap-2 px-4 pt-[max(env(safe-area-inset-top),0.5rem)] pb-2 text-xs font-medium">
             <WifiOff className="size-3.5" />
-            Connessione al server persa — riconnessione in corso…
+            {tr("connection.lost")}
           </div>
         </motion.div>
       )}

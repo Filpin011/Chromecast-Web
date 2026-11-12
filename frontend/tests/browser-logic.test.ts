@@ -3,6 +3,7 @@ import {
   browserViewReducer,
   fitViewport,
   initialBrowserView,
+  initialViewportMode,
   nextPopup,
   pageSize,
   viewportMismatch,
@@ -93,6 +94,16 @@ describe("viewport fitting", () => {
     expect(fitViewport("desktop", phone)).toEqual({ width: 1280, height: 720 });
     expect(fitViewport("mobile", { width: 1024, height: 768, insetTop: 0, insetBottom: 0 })).toEqual({ width: 390, height: 844 });
     expect(fitViewport("mobile", null)).toEqual({ width: 390, height: 844 });
+  });
+
+  it("defaults new sessions to desktop on wide screens unless a mode was saved", () => {
+    const wide = { width: 1440, height: 900, insetTop: 0, insetBottom: 0 };
+    expect(initialViewportMode(null, wide)).toBe("desktop");
+    expect(initialViewportMode(null, phone)).toBe("mobile");
+    expect(initialViewportMode(null, null)).toBe("mobile");
+    expect(initialViewportMode("mobile", wide)).toBe("mobile");
+    expect(initialViewportMode("desktop", phone)).toBe("desktop");
+    expect(initialViewportMode("garbage", wide)).toBe("desktop");
   });
 
   it("clamps to the backend's accepted range", () => {

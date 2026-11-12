@@ -1,5 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
+import { currentTranslator, t, type Translator } from "@/i18n";
 import { ApiError } from "@/lib/api";
+import type { MessageParams } from "@/lib/api/types";
 
 export const qk = {
   health: ["health"] as const,
@@ -30,37 +32,77 @@ export function makeQueryClient(): QueryClient {
   });
 }
 
-/** Italian messages for the contract's error codes (the backend's `detail` is English/technical). */
-export const ERROR_MESSAGES: Record<string, string> = {
-  device_not_found: "Dispositivo non trovato",
-  not_connected: "Nessun dispositivo connesso",
-  resolve_failed: "Impossibile trovare un video a questo indirizzo",
-  unsupported_source: "Sorgente non supportata",
-  local_disabled: "File locali disattivati sul server",
-  playlist_not_found: "Playlist non trovata",
-  validation_error: "Richiesta non valida",
-  cast_error: "Il Chromecast non è riuscito ad avviare il video",
-  queue_empty: "La coda è vuota",
-  queue_item_not_found: "Elemento non più in coda",
-  not_manual: "Solo i dispositivi aggiunti a mano possono essere rimossi",
-  favorite_not_found: "Preferito non trovato",
-  no_source_url: "Questa playlist non ha un indirizzo da aggiornare",
-  forbidden_path: "Percorso non consentito",
-  token_not_found: "Stream scaduto: riprova",
-  restream_failed: "Conversione dello stream non riuscita",
-  session_not_found: "Sessione browser non più attiva",
-  stream_not_found: "Stream non più disponibile",
-  browser_limit: "Troppe sessioni browser aperte",
-  browser_disabled: "Browser interattivo disattivato sul server",
-  browser_unavailable: "Browser interattivo non disponibile sul server",
-  browser_error: "Errore del browser sul server",
-  popup_not_found: "Popup non più disponibile",
-  network_error: "Server non raggiungibile",
-};
+/**
+ * Error codes of the API contract (docs/ARCHITECTURE.md). Each has a translation under `errors.<code>`;
+ * the backend's `detail` is English/technical and only shown for codes the UI doesn't know.
+ */
+export const ERROR_CODES = [
+  "device_not_found",
+  "not_connected",
+  "resolve_failed",
+  "unsupported_source",
+  "local_disabled",
+  "playlist_not_found",
+  "validation_error",
+  "cast_error",
+  "queue_empty",
+  "queue_item_not_found",
+  "not_manual",
+  "favorite_not_found",
+  "no_source_url",
+  "forbidden_path",
+  "token_not_found",
+  "restream_failed",
+  "session_not_found",
+  "stream_not_found",
+  "browser_limit",
+  "browser_disabled",
+  "browser_unavailable",
+  "browser_error",
+  "popup_not_found",
+  "internal_error",
+  "network_error",
+] as const;
 
-/** Human readable (Italian) message for any thrown value: known API codes are translated. */
-export function errorMessage(err: unknown, fallback = "Qualcosa è andato storto"): string {
-  if (err instanceof ApiError) return (err.code && ERROR_MESSAGES[err.code]) || err.detail || fallback;
+/** Finer-grained `reason`s the backend attaches to some errors (`errors.reason.<reason>`). */
+export const ERROR_REASONS = [
+  "connect_failed",
+  "fetch_failed",
+  "upstream_http",
+  "no_stream_on_page",
+  "extract_failed",
+  "not_m3u",
+  "empty_playlist",
+  "local_file_not_found",
+  "local_unavailable",
+  "malformed_url",
+  "unsupported_input",
+  "is_playlist",
+  "hls_not_playlist",
+] as const;
+
+/** Translated message for a stable error code (+ optional reason), or undefined if unknown. */
+export function translateErrorCode(
+  code: string | undefined,
+  reason?: string,
+  params?: MessageParams,
+  tr: Translator = currentTranslator(),
+): string | undefined {
+  return (reason && tr.maybe(`errors.reason.${reason}`, params)) || (code ? tr.maybe(`errors.${code}`, params) : undefined);
+}
+
+/** Human readable message for any thrown value, in the current language: known API codes are translated. */
+export function errorMessage(err: unknown, fallback?: string): string {
+  const fb = fallback ?? t("errors.generic");
+  if (err instanceof ApiError) return translateErrorCode(err.code, err.reason, err.params) || err.detail || fb;
   if (err instanceof Error && err.message) return err.message;
-  return fallback;
+  return fb;
+}
+
+/**
+ * Explanation of an API error for an error card: the specific reason when the UI knows it,
+ * otherwise the backend's (English, technical) detail.
+ */
+export function errorDescription(err: ApiError): string {
+  return (err.reason && currentTranslator().maybe(`errors.reason.${err.reason}`, err.params)) || err.detail;
 }

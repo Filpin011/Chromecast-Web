@@ -30,6 +30,8 @@ if (typeof window !== "undefined") {
     (globalThis as unknown as { ResizeObserver: typeof RO }).ResizeObserver = RO;
   }
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+  // jsdom defines window.scrollTo but only logs "Not implemented"; silence it.
+  window.scrollTo = (() => {}) as typeof window.scrollTo;
   if (!Element.prototype.hasPointerCapture) {
     Element.prototype.hasPointerCapture = () => false;
     Element.prototype.setPointerCapture = () => {};

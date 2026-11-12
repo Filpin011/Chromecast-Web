@@ -19,12 +19,14 @@ import type { Channel } from "@/lib/api/types";
 import { channelInput, preferredChannelLayout, type ChannelLayout } from "@/lib/channels";
 import { qk } from "@/lib/query";
 import { readStorage, writeStorage } from "@/lib/storage";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 const PAGE = 200;
 const LAYOUT_KEY = "cw.channels.layout";
 
 function PlaylistView() {
+  const t = useT();
   const id = useSearchParams().get("id");
   const playlist = usePlaylist(id);
   const [q, setQ] = useState("");
@@ -82,19 +84,19 @@ function PlaylistView() {
     <>
       <header className="sticky top-0 z-30 bg-background/80 pt-safe backdrop-blur-xl supports-backdrop-filter:bg-background/65">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-1 px-2 md:px-6">
-          <Button variant="ghost" size="icon" aria-label="Indietro" render={<Link href="/playlists/" />} nativeButton={false}>
+          <Button variant="ghost" size="icon" aria-label={t("common.back")} render={<Link href="/playlists/" />} nativeButton={false}>
             <ChevronLeft className="size-6" />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-bold">{playlist.data?.name ?? "Playlist"}</h1>
+            <h1 className="truncate text-lg font-bold">{playlist.data?.name ?? t("playlists.fallbackName")}</h1>
             <p className="text-xs text-muted-foreground tabular-nums">
-              {channels.isSuccess ? `${total.toLocaleString("it")} canali` : "…"}
+              {channels.isSuccess ? t.plural("playlists.channels", total) : "…"}
             </p>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            aria-label={layout === "grid" ? "Vista elenco" : "Vista griglia"}
+            aria-label={layout === "grid" ? t("playlists.listView") : t("playlists.gridView")}
             onClick={() => setLayout(layout === "grid" ? "list" : "grid")}
           >
             {layout === "grid" ? <List className="size-5" /> : <LayoutGrid className="size-5" />}
@@ -106,20 +108,20 @@ function PlaylistView() {
             <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
-              aria-label="Cerca canale"
+              aria-label={t("playlists.searchChannel")}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Cerca canale"
+              placeholder={t("playlists.searchChannel")}
               className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40"
             />
             {q && (
-              <button type="button" aria-label="Cancella ricerca" onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
+              <button type="button" aria-label={t("common.clearSearch")} onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
                 <X className="size-4" />
               </button>
             )}
           </div>
           {groups.length > 0 && (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:-mx-8 md:px-8" role="radiogroup" aria-label="Gruppi">
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:-mx-8 md:px-8" role="radiogroup" aria-label={t("playlists.groupsLabel")}>
               {[null, ...groups].map((g) => (
                 <button
                   key={g ?? "__all"}
@@ -132,7 +134,7 @@ function PlaylistView() {
                     group === g ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground",
                   )}
                 >
-                  {g ?? "Tutti"}
+                  {g ?? t("playlists.allGroups")}
                 </button>
               ))}
             </div>
@@ -141,11 +143,11 @@ function PlaylistView() {
       </header>
       <PageBody className="pt-2">
         {!id ? (
-          <EmptyState icon={SearchX} title="Playlist non trovata" />
+          <EmptyState icon={SearchX} title={t("errors.playlist_not_found")} />
         ) : channels.isError ? (
-          <EmptyState icon={SearchX} title="Impossibile caricare i canali" description="La playlist potrebbe essere stata eliminata." />
+          <EmptyState icon={SearchX} title={t("playlists.loadFailed")} description={t("playlists.loadFailedHint")} />
         ) : channels.isSuccess && total === 0 ? (
-          <EmptyState icon={SearchX} title="Nessun canale" description={q ? `Nessun risultato per “${q}”.` : undefined} />
+          <EmptyState icon={SearchX} title={t("playlists.noChannels")} description={q ? t("playlists.noResultsFor", { q }) : undefined} />
         ) : (
           <ChannelList
             key={`${layout}-${debouncedQ}-${group}`}

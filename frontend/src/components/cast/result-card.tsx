@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Compass, Download, ListVideo, Play, ShieldCheck, Subtitles } from "lucide-react";
+import { AlertCircle, Compass, Download, ListVideo, Play, RotateCw, ShieldCheck, Subtitles } from "lucide-react";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -13,7 +13,10 @@ import { useAddFavorite, useImportPlaylist } from "@/hooks/queries";
 import { channelRequest, useCast } from "@/hooks/use-cast";
 import { ApiError } from "@/lib/api";
 import type { Channel, ResolvedMedia } from "@/lib/api/types";
-import { hostOf, SOURCE_LABEL } from "@/lib/format";
+import { useT } from "@/i18n";
+import { hostOf, SOURCE_LABEL_KEY } from "@/lib/format";
+import { errorDescription } from "@/lib/query";
+import { cn } from "@/lib/utils";
 import { MediaActions } from "./media-actions";
 
 export function browserHref(url: string): string {
@@ -40,6 +43,7 @@ function PreviewArea({
   previewing: boolean;
   onStart: () => void;
 }) {
+  const t = useT();
   if (previewing) {
     return <VideoPreview src={media.preview_url} mimeType={media.mime_type} poster={media.thumbnail} className="rounded-none" />;
   }
@@ -49,7 +53,7 @@ function PreviewArea({
       <button
         type="button"
         onClick={onStart}
-        aria-label="Anteprima sul telefono"
+        aria-label={t("result.previewOnPhone")}
         className="absolute inset-0 grid place-items-center bg-black/25 text-white transition-colors active:bg-black/40"
       >
         <span className="grid size-14 place-items-center rounded-full bg-black/55 backdrop-blur">
@@ -61,6 +65,7 @@ function PreviewArea({
 }
 
 export function MediaResultCard({ media }: { media: ResolvedMedia }) {
+  const t = useT();
   const { cast, busy } = useCast();
   const [previewing, setPreviewing] = useState(false);
   const addFav = useAddFavorite();
@@ -75,11 +80,11 @@ export function MediaResultCard({ media }: { media: ResolvedMedia }) {
       <div className="space-y-4 p-4">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {live ? <LiveBadge /> : <Badge variant="secondary">VOD</Badge>}
-            <Badge variant="outline">{SOURCE_LABEL[media.source_kind]}</Badge>
+            {live ? <LiveBadge /> : <Badge variant="secondary">{t("result.vod")}</Badge>}
+            <Badge variant="outline">{t(SOURCE_LABEL_KEY[media.source_kind])}</Badge>
             {media.proxied && (
               <Badge variant="outline" className="gap-1">
-                <ShieldCheck className="size-3" /> Proxy
+                <ShieldCheck className="size-3" /> {t("result.proxy")}
               </Badge>
             )}
             {media.subtitles.length > 0 && (
@@ -118,6 +123,7 @@ export function PlaylistResultCard({
   channels: Channel[];
   input: string;
 }) {
+  const t = useT();
   const { cast, busy } = useCast();
   const importPl = useImportPlaylist();
   const router = useRouter();
@@ -134,12 +140,12 @@ export function PlaylistResultCard({
           <ListVideo className="size-6" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-semibold">{name || "Playlist M3U"}</h2>
-          <p className="text-sm text-muted-foreground">{channels.length} canali</p>
+          <h2 className="truncate font-semibold">{name || t("result.m3uPlaylist")}</h2>
+          <p className="text-sm text-muted-foreground">{t.plural("playlists.channels", channels.length)}</p>
         </div>
         <Button onClick={doImport} disabled={importPl.isPending} className="gap-1.5 rounded-xl">
           <Download className="size-4" />
-          Importa
+          {t("playlists.importShort")}
         </Button>
       </div>
       <ul className="divide-y">
@@ -163,36 +169,82 @@ export function PlaylistResultCard({
       </ul>
       {channels.length > 6 && (
         <p className="px-4 py-3 text-center text-xs text-muted-foreground">
-          Importa la playlist per vedere tutti i {channels.length} canali
+          {t("result.importToSeeAll", { count: channels.length })}
         </p>
       )}
     </motion.article>
   );
 }
 
-export function ResolveErrorCard({ error, input }: { error: unknown; input: string }) {
+/** Reasons where the backend never got a page: the interactive browser would fail the same way. */
+const UNREACHABLE_REASONS = new Set(["connect_failed", "fetch_failed"]);
+
+export function ResolveErrorCard({
+  error,
+  input,
+  onRetry,
+  retrying = false,
+}: {
+  error: unknown;
+  input: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
+  const t = useT();
   const router = useRouter();
   const { cast, busy } = useCast();
   const isWeb = /^https?:/i.test(input);
-  const detail = error instanceof ApiError ? error.detail : "Impossibile analizzare il link";
+  const apiErr = error instanceof ApiError ? error : null;
+  const detail = apiErr ? errorDescription(apiErr) : t("result.analyseFailed");
+  const reason = apiErr?.reason;
+  const unreachable = reason !== undefined && UNREACHABLE_REASONS.has(reason);
+  const httpError = reason === "upstream_http";
+  // the site itself failed: retrying is the main action (a real browser may still get past an HTTP error)
+  const siteFailed = unreachable || httpError;
+  const heading = unreachable ? t("result.siteUnreachable") : httpError ? t("result.siteError") : t("result.noVideoFound");
+  const showBrowser = isWeb && !unreachable;
+  // stacked full-width on phones (fixed h-12), side by side from sm; `flex-1` in a column would collapse the height
+  const btn = "w-full rounded-xl sm:w-auto sm:flex-1";
+
   return (
-    <motion.article {...cardMotion} className="space-y-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
+    <motion.article
+      {...cardMotion}
+      data-testid="resolve-error"
+      className="space-y-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4"
+    >
       <div className="flex gap-3">
         <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
-        <div className="space-y-1">
-          <p className="font-medium">Nessun video trovato automaticamente</p>
-          <p className="text-sm text-muted-foreground">{detail}</p>
+        <div className="min-w-0 space-y-1">
+          <p className="font-medium">{heading}</p>
+          <p className="text-sm break-words text-muted-foreground">{detail}</p>
         </div>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {isWeb && (
-          <Button size="lg" onClick={() => router.push(browserHref(input))} className="flex-1 gap-2 rounded-xl">
-            <Compass className="size-5" />
-            Apri nel browser interattivo
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        {siteFailed && onRetry && (
+          <Button size="lg" onClick={onRetry} disabled={retrying} className={cn(btn, "gap-2")}>
+            <RotateCw className="size-5" />
+            {t("common.retry")}
           </Button>
         )}
-        <Button size="lg" variant="secondary" disabled={busy} onClick={() => cast({ input })} className="flex-1 rounded-xl">
-          Trasmetti comunque
+        {showBrowser && (
+          <Button
+            size="lg"
+            variant={siteFailed ? "outline" : "default"}
+            onClick={() => router.push(browserHref(input))}
+            className={cn(btn, "gap-2")}
+          >
+            <Compass className="size-5" />
+            {t("result.openInteractive")}
+          </Button>
+        )}
+        <Button
+          size="lg"
+          variant={siteFailed && !onRetry ? "default" : "secondary"}
+          disabled={busy}
+          onClick={() => cast({ input })}
+          className={btn}
+        >
+          {t("result.castAnyway")}
         </Button>
       </div>
     </motion.article>
@@ -200,8 +252,9 @@ export function ResolveErrorCard({ error, input }: { error: unknown; input: stri
 }
 
 export function ResultSkeleton() {
+  const t = useT();
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card" aria-busy="true" aria-label="Analisi in corso">
+    <div className="overflow-hidden rounded-2xl border bg-card" aria-busy="true" aria-label={t("result.analysing")}>
       <div className="aspect-video animate-pulse bg-muted" />
       <div className="space-y-3 p-4">
         <div className="h-4 w-24 animate-pulse rounded bg-muted" />

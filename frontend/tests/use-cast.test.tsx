@@ -75,7 +75,7 @@ describe("useCast", () => {
     const { result } = renderHook(() => useCast(), { wrapper });
     await act(() => result.current.cast({ input: "http://a/b.mp4", title: "Film" }));
     expect(play).toHaveBeenCalledWith("dev-1", { input: "http://a/b.mp4", kind: undefined, title: "Film", enqueue: false });
-    expect(toast.success).toHaveBeenCalledWith("In riproduzione su Salotto", expect.objectContaining({ id: "t1" }));
+    expect(toast.success).toHaveBeenCalledWith("Playing on Salotto", expect.objectContaining({ id: "t1" }));
   });
 
   it("enqueues through the queue endpoint", async () => {

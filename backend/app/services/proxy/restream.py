@@ -14,7 +14,8 @@ Codecs: the source is probed with ffprobe first; video is copied only when it is
 H.264 (what a Chromecast decodes inside HLS-TS), everything else (MPEG-4 Part 2/Xvid,
 MPEG-2, VC-1/WMV, FLV1, ...) is transcoded to H.264. When the probe fails we fall
 back to "copy, then transcode if ffmpeg can't produce a playlist".
-Processes are reaped when idle and on shutdown.
+Processes are reaped when idle and on shutdown, and released as soon as the device that
+had the job loaded switches to other media (IPTV accounts often allow one connection).
 """
 
 from __future__ import annotations
@@ -59,6 +60,11 @@ class RestreamJob:
     last_access: float = field(default_factory=time.time)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     failed: str | None = None
+    # The device that had this job loaded moved on: don't pull the source again for a
+    # stale playlist request; cleared when the job is cast again (register / warm).
+    released: bool = False
+    generation: int = 0  # bumped by release(): an in-flight start-up gives up
+    probe_proc: asyncio.subprocess.Process | None = None
 
     @property
     def playlist(self) -> Path:
@@ -173,6 +179,7 @@ class RestreamManager:
         if job is None:
             job = RestreamJob(token=token, source=source, headers=hdrs, out_dir=self.base_dir / token, live=live)
             self.jobs[token] = job
+        job.released = False
         return job
 
     def get(self, token: str) -> RestreamJob | None:
@@ -186,6 +193,7 @@ class RestreamManager:
     def warm(self, job: RestreamJob) -> None:
         """Start ffmpeg in the background now, so probing/startup overlaps with the cast
         LOAD round trip instead of starting on the receiver's first playlist request."""
+        job.released = False
         if job.running or job.finished:
             return
 
@@ -198,6 +206,24 @@ class RestreamManager:
         task = asyncio.create_task(_run(), name=f"restream-warm-{job.token}")
         self._warming.add(task)
         task.add_done_callback(self._warming.discard)
+
+    async def release(self, job: RestreamJob) -> None:
+        """No device has this job loaded any more (it switched to other media): stop
+        pulling the source right away instead of after the idle timeout, so the next
+        channel can open its own connection on single-connection IPTV accounts.
+
+        The output is kept (the reaper deletes it later, a live job cast again resumes
+        with ``append_list``), and playlist requests the receiver still sends for it
+        before switching are refused instead of restarting ffmpeg."""
+        job.released = True
+        job.generation += 1
+        probe = job.probe_proc
+        if probe is not None and probe.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                probe.kill()
+        if job.running:
+            log.info("restream %s no longer loaded, stopping ffmpeg", job.token)
+        await self._kill(job)
 
     def start_reaper(self) -> None:
         if self._reaper is None:
@@ -255,6 +281,7 @@ class RestreamManager:
             )
         except OSError:
             return UNKNOWN
+        job.probe_proc = proc
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), PROBE_TIMEOUT)
         except TimeoutError:
@@ -262,6 +289,8 @@ class RestreamManager:
                 proc.kill()
             await proc.wait()
             return UNKNOWN
+        finally:
+            job.probe_proc = None
         if proc.returncode != 0:
             return UNKNOWN
         lines = [ln.strip().lower() for ln in out.decode(errors="replace").splitlines() if ln.strip()]
@@ -284,6 +313,8 @@ class RestreamManager:
                 return
             if job.finished:
                 return  # VOD fully written: serve it, never wipe and restart
+            gen = job.generation
+            self._check_released(job, gen)
             if not _executable(self.ffmpeg):
                 raise RuntimeError("ffmpeg not found")
             if job.live and job.playlist.exists() and job.failed is None:
@@ -293,8 +324,11 @@ class RestreamManager:
                 if await self._wait_playlist(job, after_mtime=mtime):
                     return
                 await self._kill(job)
+                self._check_released(job, gen)
             if job.video_codec is None:
-                job.video_codec = await self.probe_video_codec(job)
+                codec = await self.probe_video_codec(job)
+                self._check_released(job, gen)  # a killed probe says nothing about the codec
+                job.video_codec = codec
                 log.info("restream %s video codec: %s", job.token, job.video_codec)
             for mode in self.modes_for(job.video_codec):
                 await self._spawn(job, mode, append=False)
@@ -302,8 +336,14 @@ class RestreamManager:
                     job.failed = None
                     return
                 await self._kill(job)
+                self._check_released(job, gen)  # ffmpeg was stopped, not failing
             job.failed = "ffmpeg could not produce a stream"
             raise RuntimeError(job.failed)
+
+    @staticmethod
+    def _check_released(job: RestreamJob, gen: int) -> None:
+        if job.released or job.generation != gen:
+            raise RuntimeError("restream stopped: the media is no longer loaded")
 
     async def _spawn(self, job: RestreamJob, mode: str, append: bool) -> None:
         await self._kill(job)
@@ -321,6 +361,8 @@ class RestreamManager:
     async def _wait_playlist(self, job: RestreamJob, after_mtime: int | None = None) -> bool:
         deadline = time.monotonic() + STARTUP_TIMEOUT
         while time.monotonic() < deadline:
+            if job.released:
+                return False  # released while starting: the caller stops this ffmpeg
             if job.playlist.exists():
                 st = job.playlist.stat()
                 if st.st_size > 0 and (after_mtime is None or st.st_mtime_ns > after_mtime):

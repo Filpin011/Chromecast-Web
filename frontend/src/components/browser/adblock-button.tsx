@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,7 @@ export function blockedBadge(count: number): string | null {
 
 /**
  * uBlock-Origin-style shield: badge with the blocked requests of the current page, and the big
- * per-site "power button" ("Blocco pubblicità attivo su questo sito").
+ * per-site "power button" ("Ad blocking on for this site").
  */
 export function AdblockButton({
   url,
@@ -38,6 +39,7 @@ export function AdblockButton({
   onToggle: (enabled: boolean) => void;
   onStopMedia: () => void;
 }) {
+  const t = useT();
   const badge = enabled ? blockedBadge(blocked) : null;
   const host = hostOf(url) || url;
   return (
@@ -48,7 +50,7 @@ export function AdblockButton({
             variant="ghost"
             size="icon"
             className="relative shrink-0"
-            aria-label={enabled ? `Blocco pubblicità attivo, ${blocked} richieste bloccate` : "Blocco pubblicità disattivato"}
+            aria-label={enabled ? t.plural("adblock.buttonOn", blocked) : t("adblock.buttonOff")}
           />
         }
       >
@@ -68,7 +70,7 @@ export function AdblockButton({
             type="button"
             disabled={busy}
             aria-pressed={enabled}
-            aria-label={enabled ? "Disattiva il blocco su questo sito" : "Attiva il blocco su questo sito"}
+            aria-label={enabled ? t("adblock.disableSite") : t("adblock.enableSite")}
             onClick={() => onToggle(!enabled)}
             className={cn(
               "grid size-16 place-items-center rounded-full border-4 transition-colors disabled:opacity-60",
@@ -81,18 +83,18 @@ export function AdblockButton({
             {host}
           </p>
           <p className="text-xs text-muted-foreground tabular-nums">
-            {enabled ? `${blocked} richieste bloccate su questa pagina` : "Nessun blocco su questo sito"}
+            {enabled ? t.plural("adblock.blockedOnPage", blocked) : t("adblock.noBlockingSite")}
           </p>
         </div>
         <div className="flex items-center gap-3 border-t px-4 py-3">
           <label htmlFor="adblock-site" className="min-w-0 flex-1 text-sm">
-            Blocco pubblicità attivo su questo sito
+            {t("adblock.siteSwitch")}
           </label>
           <Switch id="adblock-site" checked={enabled} disabled={busy} onCheckedChange={(v) => onToggle(v)} />
         </div>
         <DropdownMenuSeparator className="my-0" />
         <DropdownMenuItem className="m-1" onClick={onStopMedia}>
-          <Square className="size-4" /> Ferma audio/video della pagina
+          <Square className="size-4" /> {t("adblock.stopMedia")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

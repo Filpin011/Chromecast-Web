@@ -39,6 +39,7 @@ backend/            FastAPI app (Python 3.12+)
       queue.py      server-side play queue per device
     api/            routers
   tests/            pytest (no real Chromecast/network needed: fake driver + mocks)
+  scripts/          dev tooling, not shipped: demo.py (fake driver + fictional demo data), screenshots.py, brand.py
 frontend/           Next.js (App Router, TypeScript strict, Tailwind v4, shadcn/ui)
   src/
     app/            pages
@@ -46,6 +47,7 @@ frontend/           Next.js (App Router, TypeScript strict, Tailwind v4, shadcn/
     lib/api/        typed REST client + types mirroring the contract
     lib/ws/         WebSocket client with auto-reconnect
     stores/         client state (zustand) fed by the WebSocket
+    i18n/           en.ts (source of truth, default/fallback) + it.ts dictionaries, t()/useT()/useLocale()
   tests/            vitest + Testing Library
 Dockerfile          multi-stage: build frontend static export → python image serving it
 docker-compose.yml  for Coolify (network_mode: host, volume for /data)
@@ -100,10 +102,17 @@ interface ResolvedMedia {
   original_input: string;
   proxied: boolean;
   subtitles: Subtitle[];
-  // HLS only, from the first media playlist (#EXT-X-MAP / segment extensions); null = MPEG-TS.
+  // HLS only, from the first segment's bytes (fallback: #EXT-X-MAP / segment extensions) of the first
+  // variant, or of its audio rendition when that is packed audio (YouTube: ID3+ADTS named .ts); null = MPEG-TS.
   // Sent in the LOAD as hlsSegmentFormat (+ hlsVideoSegmentFormat "fmp4"): the Default Media
-  // Receiver assumes TS otherwise and fMP4/CMAF or packed-audio HLS fails to play.
+  // Receiver assumes TS otherwise and fMP4/CMAF or packed-audio HLS fails to play. One value covers every
+  // variant, so a master mixing video codec families (YouTube: avc1/TS + vp09/fMP4) is always proxied and the
+  // proxy serves it with only the variants of the first variant's family (see /proxy).
   hls_segment_format: "fmp4" | "aac" | "mp3" | "ac3" | "e_ac3" | null;
+  // HLS only: "fmp4" when the (first variant's) video segments are fMP4, also when hls_segment_format names the
+  // container of a separate audio rendition (fMP4 video + packed AAC audio); sent as hlsVideoSegmentFormat.
+  // null = MPEG-TS video.
+  hls_video_segment_format: "fmp4" | null;
 }
 
 interface Channel {          // one M3U entry
@@ -181,9 +190,15 @@ interface AppState {
   version: number;                         // monotonically increasing
 }
 
-interface ApiError { detail: string; code?: string }
+interface ApiError {
+  detail: string;                          // English, technical (logs / fallback text only)
+  code?: string;                           // stable machine code (list below) — the UI translates by it
+  reason?: string;                         // optional finer-grained stable code (list below)
+  params?: Record<string, string | number>; // values for the translated message, e.g. {host}, {status}
+}
 // Every error response has this shape, including unexpected ones (500, code "internal_error").
-// Malformed URLs → 400 unsupported_source; an unreachable host → 502 resolve_failed ("Could not connect to …").
+// Malformed URLs → 400 unsupported_source/malformed_url; an unreachable host → 502 resolve_failed/connect_failed
+// ("Could not connect to …", params {host}).
 ```
 
 ## REST API (prefix `/api`)
@@ -225,14 +240,25 @@ interface ApiError { detail: string; code?: string }
 `value`: seconds for `seek`/`seek_relative`, 0..1 for `volume`, delta for `volume_relative`.
 `previous` replays the item played before the current one on that device; with no such item it
 restarts the current item (seek to 0), so it never fails just because there is no history. The UI
-therefore enables "Precedente" whenever something is playing (labelled as previous / restart).
+therefore enables "Previous" whenever something is playing (labelled as previous / restart).
 
 Errors: non-2xx with `ApiError`. Codes include `device_not_found`, `not_connected`,
 `resolve_failed`, `unsupported_source`, `local_disabled`, `playlist_not_found`
 (backend also uses: `validation_error` 422, `cast_error` 502, `queue_empty` 409, `queue_item_not_found`,
 `not_manual` 400, `favorite_not_found`, `no_source_url` 400, `forbidden_path` 403, `token_not_found`,
-`restream_failed` 502, `session_not_found`, `stream_not_found`, `browser_limit` 429, `browser_disabled` 503,
-`browser_unavailable` 503, `browser_error` 502, `popup_not_found` 404).
+`restream_failed` 502, `session_not_found`, `stream_not_found`, `browser_limit` 429 (params `{max}`), `browser_disabled` 503,
+`browser_unavailable` 503, `browser_error` 502, `popup_not_found` 404, `internal_error` 500). The frontend adds
+`network_error` for a server it can't reach.
+
+`reason` values (stable; params in braces):
+- `resolve_failed`: `connect_failed` {host}, `fetch_failed` {host}, `upstream_http` {status}, `no_stream_on_page`
+  (web page with no detectable stream: suggest the interactive browser), `extract_failed` (yt-dlp), `not_m3u`,
+  `empty_playlist`, `local_file_not_found`;
+- `unsupported_source`: `malformed_url`, `unsupported_input`, `local_unavailable`, `is_playlist` (an M3U given to
+  play: import it), `hls_not_playlist` (an HLS stream given to the playlist import).
+
+All backend text (`detail`, toast `message`) is **English**; user-facing wording lives in the frontend dictionaries,
+keyed by `code` / `reason`. Clients must fall back to `detail` / `message` for codes they don't know.
 
 `headers?: Record<string,string>` (play/queue/resolve) = upstream request headers (Referer, User-Agent, Origin,
 Cookie, Authorization) e.g. `Channel.headers`. The backend folds them into the input using the Kodi syntax
@@ -249,7 +275,12 @@ Backend behaviour notes (implemented in `backend/`):
 - While the driver reconnects after a network blip the player stays in `players` with `connected: false` (and stays
   the active device); it is removed only when the connection is given up or on disconnect. pychromecast's per-attempt
   `FAILED`/`FAILED_RESOLVE` don't end the session, only `DISCONNECTED` does; after the first connect (2 tries) the
-  reconnect loop gets 60 tries (several minutes).
+  reconnect loop gets 60 tries (several minutes). pychromecast backs off exponentially between those tries, so
+  while a session is not connected the driver also probes the device's port (after 10 s, then every 5 s) and opens
+  a fresh connection as soon as it answers (a rebooted TV is back within seconds, not minutes).
+- Connecting to a manual device not seen by mDNS first checks that `host:port` accepts TCP (3 s, then 502), then
+  reads the device's `eureka_info` for its real name (replacing the default `Chromecast @ <ip>`, never a name the
+  user chose), model and manufacturer.
 - A manual device keeps its `manual-<host>` id even when mDNS later discovers the same host (one row per host, the
   manual row enriched with the discovered name/model); ids stay valid for every endpoint.
 - `enqueue: true` (play or browser cast) and `POST .../queue` start playback immediately when the device is idle
@@ -257,11 +288,16 @@ Backend behaviour notes (implemented in `backend/`):
   when it is empty and `show_idle_on_stop` is on, the idle image is shown. `stop` clears the queue (and shows the
   idle image when `show_idle_on_stop`). `go_live` reloads a LIVE stream (jumps to the live edge).
   It also advances (with an error toast) when media we loaded ends in `IDLE` / `ERROR` (LOAD accepted, then the URL
-  turned out dead). Queue/previous entries older than 3 min are resolved again from their input before playback
+  turned out dead). A LOAD the receiver rejects is reported only by the request's 502; an `IDLE` / `ERROR` it
+  broadcasts for that LOAD neither toasts nor advances the queue. Queue/previous entries older than 3 min are
+  resolved again from their input before playback
   (yt-dlp/page URLs expire); browser-captured streams are played as captured.
-- HLS whose CORS can't be verified (probed with `Origin: https://www.gstatic.com` on the playlist, first variant and
-  first segment), DASH whose manifest doesn't answer that Origin, any source needing Referer/Origin/Cookie/Authorization,
-  and everything when `force_proxy` is on, are cast through `/proxy`; `preview_url` is always a same-origin path for
+- HLS whose CORS can't be verified (probed with `Origin: https://www.gstatic.com` on the playlist, first variant,
+  audio rendition and their first segments; a CDN answering that Origin with an HTTP error is probed again without
+  it, for master/live/segment format, and proxied), DASH whose manifest doesn't answer that Origin, any source needing
+  Referer/Origin/Cookie/Authorization, any input whose User-Agent was given explicitly (`url|User-Agent=…`, playlist
+  `#EXTVLCOPT:http-user-agent`; the Chromecast would send its own CrKey UA — the UA yt-dlp or the headless browser
+  add on their own does not count), and everything when `force_proxy` is on, are cast through `/proxy`; `preview_url` is always a same-origin path for
   HLS/DASH. A DASH `type="dynamic"` MPD is LIVE. A URL ending in `.m3u8` whose body is an IPTV channel list (has
   `#EXTINF`, no HLS tags) is returned as a playlist, like `.m3u`.
 - Playback changes on a device (play, LOAD from the queue on FINISHED, enqueue-when-idle, stop/next/previous/go_live)
@@ -280,6 +316,9 @@ Backend behaviour notes (implemented in `backend/`):
   `video/x-matroska`, while the demuxer plays H.264/AAC MKV).
 - yt-dlp: muxed formats are preferred; when a site only offers split video/audio (current YouTube), the HLS
   format's `manifest_url` (master playlist with the audio renditions) is cast.
+- The Docker image ships yt-dlp's JavaScript runtime (deno) and its EJS challenge-solver scripts (`yt-dlp-ejs`), at
+  the versions of yt-dlp's `default` + `pin-deno` extras, so YouTube extraction does not depend on the deprecated
+  JS-less client; CI checks both are found in the built image.
 
 ## Media/proxy endpoints (no `/api` prefix, consumed by the Chromecast and by the browser preview)
 
@@ -289,6 +328,9 @@ Backend behaviour notes (implemented in `backend/`):
   content-type/extension **or by sniffing the body for `#EXTM3U`** (CDNs serve them as text/plain,
   octet-stream, `stream.php?id=`…) and are always answered as `application/vnd.apple.mpegurl`.
   Segments/keys are streamed through. Adds `Access-Control-Allow-Origin: *`. Supports Range requests for MP4.
+  A master whose variants mix video codec families (by `CODECS`: avc1/avc3, hvc1/hev1, vp09, av01…) keeps only
+  the variants (and I-frame playlists) of the first variant's family, plus audio-only/codec-less ones: the LOAD's
+  `hlsSegmentFormat` is probed on the first variant and the receiver must not switch to another container.
   **DASH** manifests (by content-type/`.mpd` or a `<MPD` body) are rewritten too, into *clear* proxy paths
   `/proxy/{token}/a/{scheme}/{host}/{path}[?query]` so segment templates (`$Number%05d$`) and relative/`../`
   paths keep working inside the token: MPD-level `<BaseURL>`s are made absolute (one pointing at the manifest is
@@ -303,8 +345,14 @@ Backend behaviour notes (implemented in `backend/`):
   speed (`-re`) into an `EVENT` playlist that keeps every segment and gets `#EXT-X-ENDLIST` at the end; a finished
   job is served as is, never restarted. Idle jobs (no request for 60 s) are cleaned up only when their URL is no
   longer loaded on a device; a loaded (e.g. paused) VOD job is left alone, a loaded live job only has ffmpeg stopped
-  (its window is kept so the restart appends).
+  (its window is kept so the restart appends). When a device loads other media, shows the idle image or stops, the
+  job behind its previous `/restream` URL is released at once unless another device has it loaded: ffmpeg (and a
+  running ffprobe) is stopped so single-connection IPTV accounts can open the next channel, the output is kept for
+  the reaper, and playlist requests that would restart it answer 502 `restream_failed` until it is cast again.
 - `GET /local/{path}` — serves files under `MEDIA_ROOT` with Range support.
+  `?as=vtt` on a `.srt` file answers it converted to WebVTT (UTF-8, or cp1252 for legacy files). Resolving a local
+  video attaches the sidecar subtitles next to it as `subtitles` (`Film.vtt`, `Film.srt`, `Film.<lang>[.x].srt|vtt`,
+  case-insensitive; `lang` = the first dotted part); `.srt`/`.vtt` files are not listed by `GET /api/local`.
 - `OPTIONS` on `/proxy/…`, `/restream/…`, `/local/…`, `/idle.jpg` answers any origin's CORS preflight (204,
   `Access-Control-Allow-Origin: *`, methods `GET, HEAD, OPTIONS`, headers incl. `Range`): the receiver
   (`Origin: https://www.gstatic.com`) preflights its Range XHRs. The dev-only CORS policy applies to the rest.
@@ -317,9 +365,16 @@ Server → client messages (JSON):
 ```ts
 type ServerMessage =
   | { type: "state"; data: AppState }                       // full snapshot: on connect and after every change
-  | { type: "toast"; level: "info" | "success" | "error"; message: string }
+  | { type: "toast"; level: "info" | "success" | "error"; message: string;   // English fallback text
+      code?: string; params?: Record<string, string | number> }               // translate by code when known
   | { type: "pong" };
 ```
+
+Toast codes (always sent with `params`, possibly `{}`):
+- `cast_error` {detail} — driver/receiver error (detail is technical English);
+- `playback_failed` {title} — the receiver accepted a LOAD and then gave up (dead / expired URL);
+- `queue_skipped` {title, detail, error_code, error_reason, …the error's own params} — a queued entry could not be
+  played and was skipped; the UI translates `error_code`/`error_reason` like an `ApiError`.
 
 Client → server: `{ "type": "ping" }` (every 20s). All commands go through REST; every mutation
 results in a `state` broadcast to **all** clients, which is how every open UI stays in sync.
@@ -396,6 +451,9 @@ type BrowserClientMsg =
 ```
 
 Frames come from CDP `Page.startScreencast` (JPEG, quality ~60, everyNthFrame tuned) — fallback to periodic screenshots.
+While a captured stream's thumbnail is taken (clipped `page.screenshot`), Chromium emits screencast frames sized like
+the clip: those are dropped, and the screencast is restarted afterwards so viewers get a fresh full-viewport frame
+(a static page sends none on its own).
 Popups/new tabs opened by the page are followed into the same session (ad popups closed automatically, but their
 traffic is still sniffed). Tests mock Playwright entirely.
 
@@ -524,7 +582,9 @@ ad popups and a "play" click. Therefore:
   up to a timeout (e.g. 25s), while trying to start playback: click centre of the largest `<video>`/player element
   **in every frame**, common play selectors (`.vjs-big-play-button`, `.jw-icon-playback`, `[aria-label*=play i]`,
   `.plyr__control--overlaid`, `button[class*=play]`), dismiss overlays, close ad popups (but sniff them first).
-- Look like a normal browser: realistic desktop/mobile User-Agent and headers, `navigator.webdriver` hidden, locale
+- Look like a normal browser: realistic desktop/mobile User-Agent and headers, no `HeadlessChrome` brand in the
+  `Sec-CH-UA` client hints / `navigator.userAgentData` (the full Chromium in new headless mode, `channel="chromium"`,
+  not chromium-headless-shell), `navigator.webdriver` hidden, locale
   `it-IT`, timezone `Europe/Rome`, viewport set; launch Chromium with sane flags (`--autoplay-policy=no-user-gesture-required`).
 - Capture **request headers actually sent** (Referer/Origin of the iframe, Cookie, UA) per stream — iframe-origin
   Referer is usually what the CDN checks — and replay them through the proxy when casting.
@@ -548,3 +608,19 @@ ad popups and a "play" click. Therefore:
 
 - `cd backend && pytest` must pass with **no network and no Chromecast** (fake driver, mocked HTTP via respx, yt-dlp/playwright mocked).
 - `cd frontend && npm test` (vitest) and `npm run lint` and `npm run typecheck` and `npm run build` must pass.
+
+## Internationalisation (frontend)
+
+- Languages: **English** (default and fallback) and **Italian** (full localisation). No locale route segments or
+  middleware (static export): the language is client state.
+- `src/i18n/en.ts` is the source of truth (flat dotted keys, `as const`); `it.ts` is typed `Messages`, so it must have
+  exactly the same keys. `{name}` placeholders; plurals as `<key>_one` / `<key>_other` read with `t.plural(key, n)`
+  (Intl.PluralRules). Dates, relative times and numbers use `Intl` with the current locale.
+- Initial locale: saved choice (`localStorage["cw.locale"]`) → `navigator.language` starting with `it` → `en`.
+  The static HTML is English; an inline `<head>` script (`i18n/locale-bootstrap.ts`) sets `<html lang>` and, for a
+  non-English locale, hides the body until `LocaleSync` has applied it (no English flash; revealed anyway 1.5 s after
+  `load` / 10 s max). `LocaleSync` keeps `<html lang>` in sync and follows changes made in other tabs (`storage` event).
+  Switching (Settings → Language, or the remote browser's menu) is instant, without reload.
+- Every user-visible string goes through the dictionaries; API errors and server toasts are translated by `code` /
+  `reason` (see above). The web manifest name/description stay English. Tests enforce identical key sets, no empty
+  values, matching placeholders, and scan `src/app` + `src/components` for hard-coded Italian.

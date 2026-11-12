@@ -5,6 +5,7 @@ import { useRef, useSyncExternalStore, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { detectInput, INPUT_KIND_LABEL, type InputKind } from "@/lib/input-detect";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ const noopSubscribe = () => () => {};
 
 /**
  * `navigator.clipboard` only exists in a secure context (https / localhost). The app is served
- * over plain HTTP on the LAN, so on a phone the API is usually missing: then the "Incolla" button
+ * over plain HTTP on the LAN, so on a phone the API is usually missing: then the "Paste" button
  * is hidden and the user pastes with a long-press in the field. Server snapshot is `false` so the
  * prerendered HTML never shows a button that would not work.
  */
@@ -48,6 +49,7 @@ export interface SmartInputProps {
 
 /** One input for everything: URL, M3U link, YouTube, raw #EXTM3U text. */
 export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint }: SmartInputProps) {
+  const t = useT();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pasting = useRef(false);
   const detected = detectInput(value);
@@ -60,13 +62,13 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
     try {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) {
-        toast("Gli appunti sono vuoti");
+        toast(t("input.clipboardEmpty"));
         return;
       }
       onChange(text.trim(), "paste");
       inputRef.current?.focus();
     } catch {
-      toast.error("Accesso agli appunti negato", { description: "Incolla manualmente nel campo." });
+      toast.error(t("input.clipboardDenied"), { description: t("input.clipboardDeniedHint") });
       inputRef.current?.focus();
     }
   };
@@ -86,11 +88,11 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
       >
         <textarea
           ref={inputRef}
-          aria-label="URL, playlist o link video"
+          aria-label={t("input.label")}
           value={value}
           autoFocus={autoFocus}
           rows={1}
-          placeholder="Incolla un link: stream, pagina web, YouTube, M3U…"
+          placeholder={t("input.placeholder")}
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
@@ -113,17 +115,17 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
           className="field-sizing-content max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 outline-none placeholder:text-muted-foreground"
         />
         {value ? (
-          <Button type="button" variant="ghost" size="icon" aria-label="Cancella" onClick={() => onChange("", "type")}>
+          <Button type="button" variant="ghost" size="icon" aria-label={t("common.clear")} onClick={() => onChange("", "type")}>
             <X className="size-4" />
           </Button>
         ) : clipboard ? (
           <Button type="button" variant="secondary" onClick={paste} className="gap-1.5 rounded-xl">
             <ClipboardPaste className="size-4" />
-            Incolla
+            {t("input.paste")}
           </Button>
         ) : null}
         {value && (
-          <Button type="submit" size="icon" aria-label="Analizza" disabled={!canSubmit || loading} className="rounded-xl">
+          <Button type="submit" size="icon" aria-label={t("input.analyse")} disabled={!canSubmit || loading} className="rounded-xl">
             {loading ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
           </Button>
         )}
@@ -131,7 +133,7 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
       <div className="mt-2 flex h-5 items-center gap-1.5 px-2 text-xs">
         {detected.kind === "empty" && !clipboard && (
           <span data-testid="paste-hint" className="truncate text-muted-foreground">
-            Tieni premuto nel campo e scegli «Incolla»
+            {t("input.pasteHint")}
           </span>
         )}
         {detected.kind !== "empty" && (
@@ -143,7 +145,7 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
             )}
           >
             {Icon && <Icon className="size-3.5" />}
-            {INPUT_KIND_LABEL[detected.kind]}
+            {t(INPUT_KIND_LABEL[detected.kind])}
           </span>
         )}
         {hint && detected.kind !== "empty" && detected.kind !== "invalid" && (

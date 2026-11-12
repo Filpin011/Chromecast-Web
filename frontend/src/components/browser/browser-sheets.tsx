@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { useLocalAvailable } from "@/hooks/queries";
 import type { BrowserSession } from "@/lib/api/types";
+import { LanguagePicker } from "@/components/settings/language-picker";
+import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -17,12 +19,13 @@ const LIST = "overflow-y-auto px-3 pb-[max(env(safe-area-inset-bottom),1rem)]";
  * The session keeps running on the server: it can be resumed from the Browser screen.
  */
 export function AppMenuSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const t = useT();
   const localAvailable = useLocalAvailable();
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
       <DrawerContent>
-        <DrawerTitle className="px-5 pt-3 pb-2">Vai a</DrawerTitle>
-        <nav aria-label="Menu app" className={LIST}>
+        <DrawerTitle className="px-5 pt-3 pb-2">{t("browser.goTo")}</DrawerTitle>
+        <nav aria-label={t("browser.appMenu")} className={LIST}>
           {NAV_ITEMS.filter((i) => !i.requiresLocal || localAvailable).map((item) => {
             const Icon = item.icon;
             const here = isActivePath("/browser/", item.href);
@@ -38,10 +41,13 @@ export function AppMenuSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                 )}
               >
                 <Icon className="size-5" />
-                {item.label}
+                {t(item.label)}
               </Link>
             );
           })}
+          <div className="px-1 pt-3">
+            <LanguagePicker />
+          </div>
         </nav>
       </DrawerContent>
     </Drawer>
@@ -66,11 +72,12 @@ export function SessionsSheet({
   onClose: (s: BrowserSession) => void;
   onNew: () => void;
 }) {
+  const t = useT();
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle>
       <DrawerContent>
-        <DrawerTitle className="px-5 pt-3 pb-2">Sessioni aperte</DrawerTitle>
-        <ul className={cn(LIST, "space-y-2")} aria-label="Sessioni aperte">
+        <DrawerTitle className="px-5 pt-3 pb-2">{t("browser.openSessions")}</DrawerTitle>
+        <ul className={cn(LIST, "space-y-2")} aria-label={t("browser.openSessions")}>
           {sessions.map((s) => {
             const current = s.id === currentId;
             return (
@@ -88,11 +95,11 @@ export function SessionsSheet({
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{s.title || hostOf(s.url)}</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {hostOf(s.url)} · {s.captured.length} stream
+                      {hostOf(s.url)} · {t.plural("browser.streamCount", s.captured.length)}
                     </span>
                   </span>
                 </button>
-                <Button variant="ghost" size="icon" aria-label={`Chiudi ${hostOf(s.url)}`} onClick={() => onClose(s)} className="mr-1">
+                <Button variant="ghost" size="icon" aria-label={t("common.closeName", { name: hostOf(s.url) })} onClick={() => onClose(s)} className="mr-1">
                   <X className="size-4" />
                 </Button>
               </li>
@@ -108,7 +115,7 @@ export function SessionsSheet({
                 onNew();
               }}
             >
-              <Plus className="size-4" /> Nuova sessione
+              <Plus className="size-4" /> {t("browser.newSession")}
             </Button>
           </li>
         </ul>

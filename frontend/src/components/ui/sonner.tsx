@@ -2,10 +2,12 @@
 
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { useT } from "@/i18n"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const Toaster = ({ toastOptions, ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
+  const t = useT()
 
   return (
     <Sonner
@@ -36,9 +38,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
+      containerAriaLabel={t("common.notifications")}
       toastOptions={{
+        closeButtonAriaLabel: t("common.closeNotification"),
+        ...toastOptions,
         classNames: {
           toast: "cn-toast",
+          ...toastOptions?.classNames,
         },
       }}
       {...props}

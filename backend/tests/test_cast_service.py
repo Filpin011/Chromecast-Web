@@ -318,7 +318,43 @@ async def test_receiver_error_after_load_advances_the_queue(svc):
     await wait(lambda: svc.cast.player(DEV).original_input == MP4B)
     assert svc.cast.player(DEV).queue == []
     msgs = [q.get_nowait() for _ in range(q.qsize())]
-    assert any(m["type"] == "toast" and m["level"] == "error" and "Dead" in m["message"] for m in msgs)
+    toasts = [m for m in msgs if m["type"] == "toast" and m["level"] == "error"]
+    assert any("Dead" in m["message"] for m in toasts)
+    # stable code + params so the UI can translate it
+    assert any(m.get("code") == "playback_failed" and m["params"] == {"title": "Dead"} for m in toasts)
+
+
+async def test_rejected_load_does_not_skip_the_queue_nor_toast_twice(svc, monkeypatch):
+    """LOAD_FAILED → 502 for the caller only. The IDLE/ERROR the receiver broadcasts for
+    the same LOAD (before or after the rejection) must not toast nor play the next item."""
+    from app.services.cast.base import CastError
+
+    driver = svc.cast.driver
+    driver.vod_duration = 60
+    await svc.cast.play(DEV, MP4, title="A")
+    await svc.cast.enqueue(DEV, MP4B, title="B")
+    await wait(lambda: svc.cast.player(DEV).player_state == "PLAYING")
+    real_play = driver.play_media
+    dead = "https://cdn.example.com/dead.mp4"
+
+    async def rejecting(device_id, media):
+        if media.url != dead:
+            return await real_play(device_id, media)
+        await real_play(device_id, media)
+        driver.fail(device_id)  # broadcast while the LOAD is pending
+        asyncio.get_running_loop().call_soon(driver.fail, device_id)  # ... and after it
+        raise CastError("The Chromecast refused the media (LOAD_FAILED, 905)")
+
+    monkeypatch.setattr(driver, "play_media", rejecting)
+    q = svc.hub.subscribe()
+    with pytest.raises(AppError) as e:
+        await svc.cast.play(DEV, dead, title="Dead")
+    assert e.value.status_code == 502
+    await asyncio.sleep(0.1)
+    assert [i.title for i in svc.cast.player(DEV).queue] == ["B"]
+    assert loads(svc)[-1].url == dead  # B was never loaded
+    msgs = [q.get_nowait() for _ in range(q.qsize())]
+    assert not [m for m in msgs if m["type"] == "toast"]
 
 
 async def test_restream_of_loaded_media_survives_the_reaper(svc):
@@ -327,3 +363,107 @@ async def test_restream_of_loaded_media_survives_the_reaper(svc):
     assert job is not None and svc.resolver.restream.in_use(job)
     await svc.cast.play(DEV, MP4)
     assert not svc.resolver.restream.in_use(job)
+
+
+async def test_skipped_queue_entry_toast_has_a_stable_code(svc, monkeypatch):
+    """A queued entry that can't be resolved again is skipped with a translatable toast."""
+    from app.services.cast import service as cast_service
+
+    svc.cast.driver.vod_duration = 60
+    await svc.cast.play(DEV, MP4)
+    await svc.cast.enqueue(DEV, MP4B, title="Gone")
+    (entry,) = svc.cast.queue._items[DEV]
+    entry.resolved_at -= cast_service.RERESOLVE_AFTER + 1
+
+    async def dead(*a, **kw):
+        raise AppError(502, "Upstream returned HTTP 410", "resolve_failed", reason="upstream_http", params={"status": 410})
+
+    monkeypatch.setattr(svc.resolver, "resolve_media", dead)
+    q = svc.hub.subscribe()
+    with pytest.raises(AppError) as e:
+        await svc.cast.control(DEV, "next", None)
+    assert e.value.code == "queue_empty"
+    toasts = [m for m in (q.get_nowait() for _ in range(q.qsize())) if m["type"] == "toast"]
+    assert toasts and toasts[-1]["code"] == "queue_skipped"
+    assert toasts[-1]["params"] == {
+        "status": 410,  # the error's own params, so the UI can translate the reason too
+        "title": "Gone",
+        "detail": "Upstream returned HTTP 410",
+        "error_code": "resolve_failed",
+        "error_reason": "upstream_http",
+    }
+    assert toasts[-1]["message"] == "Skipping “Gone”: Upstream returned HTTP 410"
+
+
+def record_releases(svc, monkeypatch) -> list[str]:
+    released: list[str] = []
+
+    async def release(job):
+        released.append(job.token)
+
+    monkeypatch.setattr(svc.resolver.restream, "warm", lambda job: None)
+    monkeypatch.setattr(svc.resolver.restream, "release", release)
+    return released
+
+
+async def test_switching_channel_releases_the_previous_restream(svc, monkeypatch):
+    """Single-connection IPTV: the old channel's ffmpeg must stop before the new one starts,
+    not a minute later when the reaper notices it is idle."""
+    released = record_releases(svc, monkeypatch)
+    restream = svc.resolver.restream
+    svc.cast.driver.vod_duration = 60
+    await svc.cast.play(DEV, "rtmp://iptv.example.com/live/a")
+    a = restream.job_for_url(loads(svc)[-1].url)
+    await svc.cast.play(DEV, "rtmp://iptv.example.com/live/b")
+    b = restream.job_for_url(loads(svc)[-1].url)
+    assert released == [a.token]
+    await svc.cast.play(DEV, "rtmp://iptv.example.com/live/b")  # same channel again: kept
+    assert released == [a.token]
+    await svc.cast.control(DEV, "stop", None)
+    assert released == [a.token, b.token]
+    await svc.cast.play(DEV, "rtmp://iptv.example.com/live/a")
+    svc.db.update_settings({"show_idle_on_stop": True})
+    await svc.cast.control(DEV, "stop", None)  # idle image replaces it
+    assert released == [a.token, b.token, a.token]
+
+
+async def test_restream_still_loaded_on_another_device_is_not_released(svc, monkeypatch):
+    released = record_releases(svc, monkeypatch)
+    svc.cast.driver.vod_duration = 60
+    await svc.cast.play(DEV, "rtmp://iptv.example.com/live/a")
+    await svc.cast.play("fake-tv-0002", "rtmp://iptv.example.com/live/a")
+    await svc.cast.play(DEV, MP4)
+    assert released == []
+    await svc.cast.play("fake-tv-0002", MP4)
+    assert len(released) == 1
+
+
+async def test_rejected_go_live_reload_does_not_skip_the_queue_nor_toast_twice(svc, monkeypatch):
+    from app.services.cast.base import CastError
+
+    live = "https://cdn.example.com/live/index.m3u8"
+    respx.get(live).respond(200, text="#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\ns.ts\n")
+    driver = svc.cast.driver
+    driver.vod_duration = 60
+    await svc.cast.play(DEV, live, title="Live")
+    await svc.cast.enqueue(DEV, MP4B, title="B")
+    await wait(lambda: svc.cast.player(DEV).player_state == "PLAYING")
+    live_url = loads(svc)[-1].url
+    real_play = driver.play_media
+
+    async def rejecting(device_id, media):
+        await real_play(device_id, media)
+        driver.fail(device_id)  # broadcast while the LOAD is pending
+        asyncio.get_running_loop().call_soon(driver.fail, device_id)  # ... and after it
+        raise CastError("The Chromecast refused the media (LOAD_FAILED, 905)")
+
+    monkeypatch.setattr(driver, "play_media", rejecting)
+    q = svc.hub.subscribe()
+    with pytest.raises(AppError) as e:
+        await svc.cast.control(DEV, "go_live", None)
+    assert e.value.status_code == 502
+    await asyncio.sleep(0.1)
+    assert [i.title for i in svc.cast.player(DEV).queue] == ["B"]
+    assert loads(svc)[-1].url == live_url  # B was never loaded
+    msgs = [q.get_nowait() for _ in range(q.qsize())]
+    assert not [m for m in msgs if m["type"] == "toast"]

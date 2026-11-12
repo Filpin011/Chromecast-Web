@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { CapturedStream } from "@/lib/api/types";
 import { qualityLabel } from "@/lib/captured";
 import { hostOf } from "@/lib/format";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { StreamBadges } from "./stream-meta";
 
@@ -45,12 +46,12 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold transition active:scale-95 disabled:opacity-50",
+        "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold transition active:scale-95 disabled:opacity-50",
         primary ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" : "bg-muted text-foreground",
       )}
     >
       <Icon className="size-5" />
-      {label}
+      <span className="max-w-full truncate px-1">{label}</span>
     </button>
   );
 }
@@ -69,13 +70,14 @@ export function StreamPanel({
   onBookmark,
   busy,
 }: StreamPanelProps) {
+  const t = useT();
   const stream = streams.find((s) => s.id === selectedId) ?? streams[0];
   if (!stream) return null;
   const title = stream.title || pageTitle || hostOf(stream.page_url);
   return (
     <motion.section
       role="region"
-      aria-label="Video rilevato"
+      aria-label={t("panel.detected")}
       initial={{ y: "110%" }}
       animate={{ y: 0 }}
       exit={{ y: "110%" }}
@@ -85,19 +87,19 @@ export function StreamPanel({
       <div className="flex gap-3">
         <Thumb src={stream.thumbnail ?? snapshots[stream.id] ?? null} className="aspect-video w-32 shrink-0 rounded-xl" />
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-[0.68rem] font-semibold tracking-wider text-primary uppercase">Video rilevato</p>
+          <p className="text-[0.68rem] font-semibold tracking-wider text-primary uppercase">{t("panel.detected")}</p>
           <h3 className="line-clamp-2 text-sm leading-snug font-semibold" data-testid="stream-title">
             {title}
           </h3>
           <StreamBadges stream={stream} />
         </div>
-        <Button variant="ghost" size="icon" aria-label="Chiudi pannello" onClick={onDismiss} className="-mt-1 -mr-1">
+        <Button variant="ghost" size="icon" aria-label={t("panel.close")} onClick={onDismiss} className="-mt-1 -mr-1">
           <X className="size-5" />
         </Button>
       </div>
 
       {streams.length > 1 && (
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 no-scrollbar" role="tablist" aria-label="Stream rilevati">
+        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 no-scrollbar" role="tablist" aria-label={t("browser.detectedStreams")}>
           {streams.map((s, i) => (
             <button
               key={s.id}
@@ -110,18 +112,18 @@ export function StreamPanel({
                 s.id === stream.id ? "border-primary bg-primary/15 text-primary" : "text-muted-foreground",
               )}
             >
-              {qualityLabel(s) ?? `Stream ${i + 1}`}
-              {s.is_live ? " · Live" : ""}
+              {qualityLabel(s) ?? t("panel.streamN", { n: i + 1 })}
+              {s.is_live ? ` · ${t("player.live")}` : ""}
             </button>
           ))}
         </div>
       )}
 
       <div className="mt-3 grid grid-cols-4 gap-2">
-        <ActionButton icon={Cast} label="Cast" primary onClick={() => onCast(stream)} disabled={busy} />
-        <ActionButton icon={ListPlus} label="Coda" onClick={() => onQueue(stream)} disabled={busy} />
-        <ActionButton icon={Play} label="Play" onClick={() => onPlay(stream)} />
-        <ActionButton icon={Bookmark} label="Salva" onClick={() => onBookmark(stream)} />
+        <ActionButton icon={Cast} label={t("common.cast")} primary onClick={() => onCast(stream)} disabled={busy} />
+        <ActionButton icon={ListPlus} label={t("common.queue")} onClick={() => onQueue(stream)} disabled={busy} />
+        <ActionButton icon={Play} label={t("common.preview")} onClick={() => onPlay(stream)} />
+        <ActionButton icon={Bookmark} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
       </div>
     </motion.section>
   );

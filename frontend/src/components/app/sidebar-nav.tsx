@@ -1,26 +1,26 @@
 "use client";
 
-import { Cast } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { DeviceButton } from "@/components/devices/device-button";
 import { useLocalAvailable } from "@/hooks/queries";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { isActivePath, NAV_ITEMS } from "./nav-items";
 import { ThemeToggle } from "./theme-toggle";
 
 export function SidebarNav() {
+  const t = useT();
   const pathname = usePathname() ?? "/";
   const localAvailable = useLocalAvailable();
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-(--sidebar-w) flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
       <div className="flex h-16 items-center gap-2.5 px-5">
-        <div className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-indigo-700 text-white shadow-md shadow-primary/30">
-          <Cast className="size-5" />
-        </div>
+        <Image src="/icons/icon.svg" alt="" width={36} height={36} className="size-9 rounded-xl shadow-md shadow-primary/30" priority />
         <span className="font-heading text-lg font-semibold tracking-tight">Chromecast Web</span>
       </div>
-      <nav aria-label="Navigazione principale" className="flex-1 space-y-1 px-3 py-2">
+      <nav aria-label={t("nav.main")} className="flex-1 space-y-1 px-3 py-2">
         {NAV_ITEMS.filter((i) => !i.requiresLocal || localAvailable).map((item) => {
           const active = isActivePath(pathname, item.href);
           const Icon = item.icon;
@@ -37,7 +37,7 @@ export function SidebarNav() {
               )}
             >
               <Icon className={cn("size-5", active && "text-primary")} />
-              {item.label}
+              {t(item.label)}
             </Link>
           );
         })}

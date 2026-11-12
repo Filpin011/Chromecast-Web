@@ -1,3 +1,4 @@
+import type { MessageKey } from "@/i18n";
 import type { SourceKind } from "@/lib/api/types";
 
 export type InputKind = "empty" | "url" | "m3u" | "youtube" | "stream" | "invalid";
@@ -46,13 +47,13 @@ export function detectInput(raw: string): DetectedInput {
   return { kind: "url", value: href };
 }
 
-export const INPUT_KIND_LABEL: Record<InputKind, string> = {
-  empty: "",
-  url: "Pagina web",
-  m3u: "Playlist M3U",
-  youtube: "YouTube",
-  stream: "Stream diretto",
-  invalid: "Non riconosciuto",
+/** Dictionary key of each detected kind's label (none for empty input). */
+export const INPUT_KIND_LABEL: Record<Exclude<InputKind, "empty">, MessageKey> = {
+  url: "input.kind.url",
+  m3u: "input.kind.m3u",
+  youtube: "input.kind.youtube",
+  stream: "input.kind.stream",
+  invalid: "input.kind.invalid",
 };
 
 /**

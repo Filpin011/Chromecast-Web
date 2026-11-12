@@ -3,12 +3,13 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 const OPTIONS = [
-  { value: "light", label: "Chiaro", icon: Sun },
-  { value: "dark", label: "Scuro", icon: Moon },
-  { value: "system", label: "Sistema", icon: Monitor },
+  { value: "light", label: "theme.light", icon: Sun },
+  { value: "dark", label: "theme.dark", icon: Moon },
+  { value: "system", label: "theme.system", icon: Monitor },
 ] as const;
 
 function useMounted() {
@@ -21,10 +22,11 @@ function useMounted() {
 
 /** Segmented light / dark / system switch. */
 export function ThemeToggle({ className }: { className?: string }) {
+  const t = useT();
   const { theme, setTheme } = useTheme();
   const mounted = useMounted();
   return (
-    <div role="radiogroup" aria-label="Tema" className={cn("grid grid-cols-3 gap-1 rounded-xl bg-muted p-1", className)}>
+    <div role="radiogroup" aria-label={t("theme.label")} className={cn("grid grid-cols-3 gap-1 rounded-xl bg-muted p-1", className)}>
       {OPTIONS.map(({ value, label, icon: Icon }) => {
         const active = mounted && theme === value;
         return (
@@ -40,7 +42,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             )}
           >
             <Icon className="size-4" />
-            <span>{label}</span>
+            <span>{t(label)}</span>
           </button>
         );
       })}

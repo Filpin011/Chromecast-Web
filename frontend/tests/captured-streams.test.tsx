@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CapturedList } from "@/components/browser/captured-list";
 import { KeyboardBar } from "@/components/browser/keyboard-bar";
 import { StreamPanel, type StreamPanelProps } from "@/components/browser/stream-panel";
+import { useLocaleStore } from "@/i18n";
 import { rankCaptured } from "@/lib/captured";
 import { makeCaptured } from "./fixtures";
 
@@ -36,16 +37,32 @@ describe("StreamPanel", () => {
     expect(screen.getByTestId("kind-badge")).toHaveTextContent("HLS master");
   });
 
-  it("fires Cast / Queue / Play / Bookmark with the selected stream", () => {
+  it("fires Cast / Queue / Preview / Favorite with the selected stream", () => {
     const p = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "Cast" }));
-    fireEvent.click(screen.getByRole("button", { name: "Coda" }));
-    fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    fireEvent.click(screen.getByRole("button", { name: "Salva" }));
+    fireEvent.click(screen.getByRole("button", { name: "Queue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Favorite" }));
     expect(p.onCast).toHaveBeenCalledWith(best);
     expect(p.onQueue).toHaveBeenCalledWith(best);
     expect(p.onPlay).toHaveBeenCalledWith(best);
     expect(p.onBookmark).toHaveBeenCalledWith(best);
+  });
+
+  it("labels the local preview like the desktop list does (not 'Play', which suggests the TV)", () => {
+    act(() => useLocaleStore.setState({ locale: "it", hydrated: true }));
+    try {
+      renderPanel();
+      expect(screen.getByRole("button", { name: "Anteprima" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Preferito" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Play" })).toBeNull();
+      cleanup();
+      render(<CapturedList streams={[best]} onPreview={vi.fn()} onCast={vi.fn()} onBookmark={vi.fn()} />);
+      expect(screen.getByText("Anteprima")).toBeInTheDocument();
+      expect(screen.getByText("Preferito")).toBeInTheDocument();
+    } finally {
+      act(() => useLocaleStore.setState({ locale: "en", hydrated: false }));
+    }
   });
 
   it("switches between streams and falls back to the page title", () => {
@@ -60,7 +77,7 @@ describe("StreamPanel", () => {
 
   it("can be dismissed", () => {
     const p = renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Chiudi pannello" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
     expect(p.onDismiss).toHaveBeenCalled();
   });
 });
@@ -68,7 +85,7 @@ describe("StreamPanel", () => {
 describe("CapturedList", () => {
   it("shows a listening state when empty", () => {
     render(<CapturedList streams={[]} onPreview={vi.fn()} onCast={vi.fn()} />);
-    expect(screen.getByText(/In ascolto del traffico/)).toBeInTheDocument();
+    expect(screen.getByText(/Listening to the page’s traffic/)).toBeInTheDocument();
   });
 
   it("lists streams with kind badges and actions", () => {
@@ -77,8 +94,8 @@ describe("CapturedList", () => {
     render(<CapturedList streams={[best, other]} onPreview={onPreview} onCast={onCast} />);
     const badges = screen.getAllByTestId("kind-badge").map((b) => b.textContent);
     expect(badges).toEqual(["HLS master", "MP4"]);
-    fireEvent.click(screen.getAllByRole("button", { name: /^Trasmetti/ })[1]);
-    fireEvent.click(screen.getAllByRole("button", { name: /^Anteprima/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Cast / })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Preview / })[0]);
     expect(onCast).toHaveBeenCalledWith(other);
     expect(onPreview).toHaveBeenCalledWith(best);
   });
@@ -87,8 +104,8 @@ describe("CapturedList", () => {
     const onQueue = vi.fn();
     const onBookmark = vi.fn();
     render(<CapturedList streams={[best, other]} onPreview={vi.fn()} onCast={vi.fn()} onQueue={onQueue} onBookmark={onBookmark} />);
-    fireEvent.click(screen.getAllByRole("button", { name: /^Aggiungi alla coda/ })[0]);
-    fireEvent.click(screen.getAllByRole("button", { name: /^Aggiungi ai preferiti/ })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Add to queue / })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Add to favorites / })[1]);
     expect(onQueue).toHaveBeenCalledWith(best);
     expect(onBookmark).toHaveBeenCalledWith(other);
   });
@@ -98,9 +115,9 @@ describe("KeyboardBar", () => {
   it("sends text + Enter on submit and Backspace on demand", () => {
     const send = vi.fn().mockReturnValue(true);
     render(<KeyboardBar send={send} />);
-    fireEvent.change(screen.getByLabelText("Testo da inviare alla pagina"), { target: { value: "ciao" } });
-    fireEvent.click(screen.getByRole("button", { name: "Invio" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancella carattere" }));
+    fireEvent.change(screen.getByLabelText("Text to send to the page"), { target: { value: "ciao" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete character" }));
     expect(send.mock.calls.map((c) => c[0])).toEqual([
       { type: "text", text: "ciao" },
       { type: "key", key: "Enter" },

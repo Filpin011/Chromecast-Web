@@ -12,6 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useT, type MessageKey } from "@/i18n";
 import type { Channel } from "@/lib/api/types";
 import type { ChannelLayout } from "@/lib/channels";
 import { cn } from "@/lib/utils";
@@ -21,10 +22,10 @@ export type { ChannelLayout } from "@/lib/channels";
 /** Secondary per-channel actions (the tap itself casts right away). */
 export type ChannelAction = "queue" | "favorite" | "preview";
 
-const ACTIONS: { action: ChannelAction; label: string; icon: typeof Cast }[] = [
-  { action: "queue", label: "Aggiungi alla coda", icon: ListPlus },
-  { action: "favorite", label: "Aggiungi ai preferiti", icon: Star },
-  { action: "preview", label: "Anteprima", icon: Eye },
+const ACTIONS: { action: ChannelAction; label: MessageKey; icon: typeof Cast }[] = [
+  { action: "queue", label: "media.addToQueue", icon: ListPlus },
+  { action: "favorite", label: "media.addToFavorites", icon: Star },
+  { action: "preview", label: "common.preview", icon: Eye },
 ];
 
 /**
@@ -44,6 +45,7 @@ function ChannelItem({
   onSelect: (c: Channel) => void;
   onAction?: (action: ChannelAction, c: Channel) => void;
 }) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const grid = layout === "grid";
   return (
@@ -87,7 +89,7 @@ function ChannelItem({
       {onAction && (
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger
-            aria-label={`Altre azioni per ${ch.name}`}
+            aria-label={t("channels.moreActions", { name: ch.name })}
             className={cn(
               "grid shrink-0 place-items-center text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
               grid
@@ -101,12 +103,12 @@ function ChannelItem({
             <DropdownMenuGroup>
               <DropdownMenuLabel className="truncate">{ch.name}</DropdownMenuLabel>
               <DropdownMenuItem disabled={disabled} onClick={() => onSelect(ch)}>
-                <Cast className="size-4" /> Trasmetti ora
+                <Cast className="size-4" /> {t("media.castNow")}
               </DropdownMenuItem>
               {ACTIONS.map(({ action, label, icon: Icon }) => (
                 // queueing goes through the same busy cast pipeline; favorite/preview don't
                 <DropdownMenuItem key={action} disabled={action === "queue" && disabled} onClick={() => onAction(action, ch)}>
-                  <Icon className="size-4" /> {label}
+                  <Icon className="size-4" /> {t(label)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
@@ -162,6 +164,7 @@ export function ChannelList({
   onNeedMore: () => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const { ref, width } = useWidth<HTMLDivElement>();
   const cols = layout === "grid" ? columnsFor(width || 360) : 1;
   const rows = Math.ceil(total / cols);
@@ -189,7 +192,7 @@ export function ChannelList({
   }, [rowHeight, virtualizer]);
 
   return (
-    <div ref={ref} className="relative w-full" style={{ height: virtualizer.getTotalSize() }} role="list" aria-label="Canali">
+    <div ref={ref} className="relative w-full" style={{ height: virtualizer.getTotalSize() }} role="list" aria-label={t("channels.label")}>
       {items.map((row) => (
         <div
           key={row.key}

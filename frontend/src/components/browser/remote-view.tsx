@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { BrowserClientMsg } from "@/lib/api/types";
 import type { BrowserLinkStatus } from "@/lib/browser-session";
 import { clientToPage, deltaToPage, toPlaywrightKey, type Size } from "@/lib/coords";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { createCanvasSink, type FrameSink } from "@/hooks/use-browser-session";
 
@@ -60,6 +61,7 @@ interface Gesture {
  * Drag = scroll (like a touch screen), short press = tap/click.
  */
 export function RemoteView({ page, hasFrame, closed, send, onSink, status = "open", onRetry, onReopen, className }: RemoteViewProps) {
+  const t = useT();
   const failed = !closed && status === "failed";
   const reconnecting = useSettled(!closed && !failed && status !== "open", RECONNECT_GRACE_MS);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -171,7 +173,7 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         ref={canvasRef}
         tabIndex={0}
         role="application"
-        aria-label="Pagina remota: tocca per cliccare, trascina per scorrere"
+        aria-label={t("remote.label")}
         data-testid="remote-canvas"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -185,7 +187,7 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-white/70">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="size-7 animate-spin" />
-            Caricamento pagina…
+            {t("remote.loading")}
           </div>
         </div>
       )}
@@ -193,7 +195,7 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         <div role="status" className="absolute inset-0 grid place-items-center bg-black/60 text-sm text-white/85">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="size-7 animate-spin" />
-            Riconnessione al server…
+            {t("remote.reconnecting")}
           </div>
         </div>
       )}
@@ -201,10 +203,10 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         <div role="alert" className="absolute inset-0 grid place-items-center bg-black/70 px-6 text-center text-sm text-white/85">
           <div className="flex flex-col items-center gap-3">
             <WifiOff className="size-7" />
-            Connessione con il server persa: tocchi e scorrimenti non arrivano alla pagina.
+            {t("remote.lost")}
             {onRetry && (
               <Button variant="secondary" size="lg" onClick={onRetry} className="gap-2">
-                <RotateCw className="size-4" /> Riprova
+                <RotateCw className="size-4" /> {t("common.retry")}
               </Button>
             )}
           </div>
@@ -214,10 +216,10 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         <div role="alert" className="absolute inset-0 grid place-items-center bg-black/70 text-sm text-white/80">
           <div className="flex flex-col items-center gap-3">
             <MonitorX className="size-7" />
-            Sessione chiusa
+            {t("remote.closed")}
             {onReopen && (
               <Button variant="secondary" size="lg" onClick={onReopen} className="gap-2">
-                <RotateCw className="size-4" /> Riapri questa pagina
+                <RotateCw className="size-4" /> {t("remote.reopen")}
               </Button>
             )}
           </div>

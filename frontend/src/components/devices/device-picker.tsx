@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useActiveStatus, useDevices, useDiscovering } from "@/hooks/use-app-state";
 import { api } from "@/lib/api";
 import type { Device } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { errorMessage } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ export function parseHostInput(raw: string): { host: string; port?: number } | n
 }
 
 function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
+  const t = useT();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const parsed = parseHostInput(value);
@@ -39,11 +41,11 @@ function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
     setBusy(true);
     try {
       const d = await api.devices.addManual(parsed);
-      toast.success(`${d.name} aggiunto`);
+      toast.success(t("devices.added", { name: d.name }));
       setValue("");
       onAdded(d);
     } catch (err) {
-      toast.error(errorMessage(err, "Dispositivo non raggiungibile"));
+      toast.error(errorMessage(err, t("devices.unreachable")));
     } finally {
       setBusy(false);
     }
@@ -51,8 +53,8 @@ function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
   return (
     <form onSubmit={submit} className="flex gap-2 px-4 pb-2">
       <Input
-        aria-label="Indirizzo IP"
-        placeholder="192.168.1.50 o host:porta"
+        aria-label={t("devices.ipAddress")}
+        placeholder={t("devices.ipPlaceholder")}
         inputMode="url"
         autoCapitalize="off"
         autoCorrect="off"
@@ -61,7 +63,7 @@ function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
         className="h-11"
       />
       <Button type="submit" disabled={!parsed || busy} className="h-11">
-        {busy ? <Loader2 className="size-4 animate-spin" /> : "Aggiungi"}
+        {busy ? <Loader2 className="size-4 animate-spin" /> : t("common.add")}
       </Button>
     </form>
   );
@@ -79,8 +81,9 @@ export interface DevicePickerContentProps {
   connectOnPick?: boolean;
 }
 
-/** "Invia video a…" — minimal & fast device list, reused app-wide. */
+/** "Send video to…" — minimal & fast device list, reused app-wide. */
 export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick = true }: DevicePickerContentProps) {
+  const t = useT();
   const devices = useDevices();
   const discovering = useDiscovering();
   const { device: active, connected } = useActiveStatus();
@@ -108,7 +111,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
       st.setActiveDevice(d.id);
       onPicked(d.id);
     } catch (e) {
-      toast.error(errorMessage(e, `Impossibile connettersi a ${d.name}`));
+      toast.error(errorMessage(e, t("devices.connectFailed", { name: d.name })));
     } finally {
       setConnecting(null);
     }
@@ -126,7 +129,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
   const remove = async (d: Device) => {
     try {
       await api.devices.remove(d.id);
-      toast.success(`${d.name} rimosso`);
+      toast.success(t("devices.removed", { name: d.name }));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -138,7 +141,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
     try {
       await api.devices.discover();
     } catch (e) {
-      toast.error(errorMessage(e, "Ricerca non riuscita"));
+      toast.error(errorMessage(e, t("devices.searchFailed")));
     } finally {
       setRefreshing(false);
     }
@@ -147,7 +150,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
   return (
     <div className="flex flex-col pb-[max(env(safe-area-inset-bottom),0.75rem)]">
       <h2 className="px-5 pt-4 pb-2 text-lg font-semibold">{title}</h2>
-      <ul className="max-h-[50dvh] overflow-y-auto" aria-label="Dispositivi" aria-busy={scanning}>
+      <ul className="max-h-[50dvh] overflow-y-auto" aria-label={t("devices.label")} aria-busy={scanning}>
         {sorted.map((d) => {
           const isActive = active?.id === d.id && connected;
           const isConnecting = connecting === d.id;
@@ -168,23 +171,23 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
                   <span className="block truncate font-medium">{d.name}</span>
                   <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                     {!d.online && <WifiOff className="size-3" />}
-                    {d.online ? (d.model ?? d.host) : "Offline"}
-                    {d.manual && " · manuale"}
+                    {d.online ? (d.model ?? d.host) : t("devices.offline")}
+                    {d.manual && ` · ${t("devices.manual")}`}
                   </span>
                 </span>
                 {isConnecting ? (
-                  <Loader2 className="size-5 animate-spin" aria-label="Connessione…" />
+                  <Loader2 className="size-5 animate-spin" aria-label={t("devices.connecting")} />
                 ) : isActive ? (
-                  <Check className="size-5" aria-label="Connesso" />
+                  <Check className="size-5" aria-label={t("settings.connected")} />
                 ) : null}
               </button>
               {isActive && (
-                <Button variant="ghost" size="icon" aria-label={`Disconnetti ${d.name}`} onClick={() => disconnect(d)}>
+                <Button variant="ghost" size="icon" aria-label={t("devices.disconnectName", { name: d.name })} onClick={() => disconnect(d)} className="mr-2">
                   <Unplug className="size-4" />
                 </Button>
               )}
               {d.manual && !isActive && (
-                <Button variant="ghost" size="icon" aria-label={`Rimuovi ${d.name}`} onClick={() => remove(d)} className="mr-2">
+                <Button variant="ghost" size="icon" aria-label={t("devices.removeName", { name: d.name })} onClick={() => remove(d)} className="mr-2">
                   <Trash2 className="size-4" />
                 </Button>
               )}
@@ -193,7 +196,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
         })}
         {!sorted.length && !scanning && (
           <li className="px-5 py-6 text-center text-sm text-muted-foreground">
-            Nessun dispositivo trovato. Aggiorna l’elenco o aggiungilo per IP.
+            {t("devices.noneFound")}
           </li>
         )}
       </ul>
@@ -205,7 +208,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
           className="flex min-h-13 w-full items-center gap-4 px-5 text-left text-sm font-medium active:bg-muted disabled:opacity-70"
         >
           <RefreshCw className={cn("size-5", scanning && "animate-spin")} />
-          {scanning ? "Ricerca in corso…" : "Aggiorna elenco"}
+          {scanning ? t("devices.searching") : t("devices.refresh")}
         </button>
         <button
           type="button"
@@ -214,7 +217,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
           className="flex min-h-13 w-full items-center gap-4 px-5 text-left text-sm font-medium active:bg-muted"
         >
           <Plus className={cn("size-5 transition-transform", adding && "rotate-45")} />
-          Aggiungi per indirizzo IP
+          {t("devices.addByIp")}
         </button>
         <AnimatePresence initial={false}>
           {adding && (
@@ -228,7 +231,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
           onClick={onCancel}
           className="flex min-h-13 w-full items-center justify-center px-5 text-sm font-semibold text-muted-foreground active:bg-muted"
         >
-          Annulla
+          {t("common.cancel")}
         </button>
       </div>
     </div>

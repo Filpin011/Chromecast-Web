@@ -6,6 +6,7 @@ import { VideoPreview } from "@/components/media/video-preview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import type { CapturedStream } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { shortUrl } from "@/lib/format";
 import { StreamBadges } from "./stream-meta";
 
@@ -23,6 +24,7 @@ export function PreviewDialog({
   title?: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const t = useT();
   const q = useQuery({
     queryKey: ["preview", stream?.url],
     queryFn: ({ signal }) => api.resolver.resolve(stream!.url, "direct", signal),
@@ -36,7 +38,7 @@ export function PreviewDialog({
     <Dialog open={!!stream} onOpenChange={onOpenChange}>
       <DialogContent className="gap-3 sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="line-clamp-1 pr-8">{title || stream?.title || "Anteprima"}</DialogTitle>
+          <DialogTitle className="line-clamp-1 pr-8">{title || stream?.title || t("common.preview")}</DialogTitle>
           <DialogDescription className="truncate">{stream ? shortUrl(stream.url, 70) : ""}</DialogDescription>
         </DialogHeader>
         {stream && <StreamBadges stream={stream} />}

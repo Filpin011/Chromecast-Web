@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import type { PopupPolicy, Settings } from "@/lib/api/types";
+import { formatNumber, useT, type MessageKey } from "@/i18n";
 import { formatRelative } from "@/lib/format";
 import { errorMessage } from "@/lib/query";
 import { cn } from "@/lib/utils";
 
-const POLICIES: { value: PopupPolicy; label: string; hint: string }[] = [
-  { value: "ask", label: "Chiedi", hint: "Mostra «La pagina vuole aprire…» e decidi tu." },
-  { value: "block", label: "Blocca", hint: "Chiude ogni popup e nuova scheda senza chiedere." },
-  { value: "allow", label: "Consenti", hint: "Apre i popup non pubblicitari nella sessione." },
+const POLICIES: { value: PopupPolicy; label: MessageKey; hint: MessageKey }[] = [
+  { value: "ask", label: "adblock.policy.ask", hint: "adblock.policy.askHint" },
+  { value: "block", label: "adblock.policy.block", hint: "adblock.policy.blockHint" },
+  { value: "allow", label: "adblock.policy.allow", hint: "adblock.policy.allowHint" },
 ];
 
 const FILTERS_KEY = ["filters"] as const;
@@ -30,6 +31,7 @@ function HostList({
   hosts: string[];
   onRemove: (host: string) => void;
 }) {
+  const t = useT();
   return (
     <div className="px-4 py-3">
       <p className="text-sm font-medium">{label}</p>
@@ -42,7 +44,7 @@ function HostList({
               <span className="max-w-48 truncate">{h}</span>
               <button
                 type="button"
-                aria-label={`Rimuovi ${h}`}
+                aria-label={t("devices.removeName", { name: h })}
                 onClick={() => onRemove(h)}
                 className="grid size-6 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
               >
@@ -56,17 +58,18 @@ function HostList({
   );
 }
 
-/** "Browser e pubblicità": global ad-block switch, popup policy, per-site lists, filter lists. */
+/** "Browser & ads": global ad-block switch, popup policy, per-site lists, filter lists. */
 export function AdblockSettings({ settings: s, onChange }: { settings: Settings | undefined; onChange: (patch: Partial<Settings>) => void }) {
+  const t = useT();
   const qc = useQueryClient();
   const filters = useQuery({ queryKey: FILTERS_KEY, queryFn: () => api.filters.list(), staleTime: 60_000 });
   const refresh = useMutation({
     mutationFn: () => api.filters.refresh(),
     onSuccess: (data) => {
       qc.setQueryData(FILTERS_KEY, data);
-      toast.success("Liste filtri aggiornate");
+      toast.success(t("adblock.listsUpdated"));
     },
-    onError: (e) => toast.error(errorMessage(e, "Aggiornamento liste non riuscito")),
+    onError: (e) => toast.error(errorMessage(e, t("adblock.listsUpdateFailed"))),
   });
   const lists = filters.data?.lists ?? [];
   const totalRules = lists.reduce((n, l) => n + l.rules, 0);
@@ -77,9 +80,9 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
       <div className="flex min-h-14 items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <label htmlFor="adblock-enabled" className="block text-sm font-medium">
-            Blocco pubblicità
+            {t("adblock.title")}
           </label>
-          <p className="text-xs text-muted-foreground">Filtri di uBlock Origin nel browser remoto (rete + elementi nascosti).</p>
+          <p className="text-xs text-muted-foreground">{t("adblock.description")}</p>
         </div>
         <Switch
           id="adblock-enabled"
@@ -91,7 +94,7 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
 
       <div className="px-4 py-3">
         <p className="text-sm font-medium" id="popup-policy-label">
-          Popup e nuove schede
+          {t("adblock.popups")}
         </p>
         <div role="radiogroup" aria-labelledby="popup-policy-label" className="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
           {POLICIES.map((p) => (
@@ -107,24 +110,24 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
                 policy === p.value ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
-              {p.label}
+              {t(p.label)}
             </button>
           ))}
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">
-          {POLICIES.find((p) => p.value === policy)?.hint} I popup pubblicitari vengono sempre chiusi.
+          {t(POLICIES.find((p) => p.value === policy)?.hint ?? "adblock.policy.askHint")} {t("adblock.adPopupsClosed")}
         </p>
       </div>
 
       <HostList
-        label="Siti senza blocco pubblicità"
-        empty="Nessuno: il blocco è attivo ovunque."
+        label={t("adblock.disabledHosts")}
+        empty={t("adblock.disabledHostsEmpty")}
         hosts={s?.adblock_disabled_hosts ?? []}
         onRemove={(h) => onChange({ adblock_disabled_hosts: (s?.adblock_disabled_hosts ?? []).filter((x) => x !== h) })}
       />
       <HostList
-        label="Siti con popup sempre bloccati"
-        empty="Nessuno."
+        label={t("adblock.popupBlockedHosts")}
+        empty={t("adblock.popupBlockedHostsEmpty")}
         hosts={s?.popup_blocked_hosts ?? []}
         onRemove={(h) => onChange({ popup_blocked_hosts: (s?.popup_blocked_hosts ?? []).filter((x) => x !== h) })}
       />
@@ -132,24 +135,24 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
       <div className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Liste filtri</p>
+            <p className="text-sm font-medium">{t("adblock.filterLists")}</p>
             <p className="text-xs text-muted-foreground tabular-nums">
-              {filters.isLoading ? "…" : `${lists.length} liste · ${totalRules.toLocaleString("it-IT")} regole · aggiornate ogni 24 ore`}
+              {filters.isLoading ? "…" : `${t.plural("adblock.lists", lists.length)} · ${t.plural("adblock.rules", totalRules)} · ${t("adblock.updatedDaily")}`}
             </p>
           </div>
           <Button variant="secondary" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
             {refresh.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Aggiorna
+            {t("playlists.refresh")}
           </Button>
         </div>
         {lists.length > 0 && (
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             {lists.map((l) => (
               <li key={l.name} className="flex justify-between gap-2">
-                <span className="truncate">{l.name}</span>
+                <span className="truncate">{l.updated_at === null ? t("adblock.bundledName") : l.name}</span>
                 <span className="shrink-0 tabular-nums">
-                  {l.rules.toLocaleString("it-IT")}
-                  {l.updated_at ? ` · ${formatRelative(l.updated_at)}` : " · inclusa"}
+                  {formatNumber(l.rules, undefined, t.locale)}
+                  {l.updated_at ? ` · ${formatRelative(l.updated_at)}` : ` · ${t("adblock.bundled")}`}
                 </span>
               </li>
             ))}

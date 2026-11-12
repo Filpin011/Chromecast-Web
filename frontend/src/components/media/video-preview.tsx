@@ -4,6 +4,7 @@ import { AlertTriangle, Loader2, RotateCw, Volume2, VolumeX } from "lucide-react
 import { useEffect, useRef, useState } from "react";
 import { backendUrl } from "@/lib/config";
 import { canPlayNativeHls, isDashSource, isHlsSource } from "@/lib/media";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 type Status = "loading" | "playing" | "error" | "unsupported";
@@ -25,10 +26,11 @@ export function VideoPreview({
   className?: string;
   controls?: boolean;
 }) {
+  const tr = useT();
   const ref = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [muted, setMuted] = useState(true);
-  /** Bumped by "Riprova" to tear the player down and load the source again. */
+  /** Bumped by "Retry" to tear the player down and load the source again. */
   const [attempt, setAttempt] = useState(0);
   const url = backendUrl(src);
   const failed = status === "error" || status === "unsupported";
@@ -112,15 +114,15 @@ export function VideoPreview({
           <div className="flex flex-col items-center gap-2">
             <AlertTriangle className="size-5" />
             {status === "unsupported"
-              ? "Anteprima non disponibile per questo formato — il Chromecast può comunque riprodurlo."
-              : "Anteprima non disponibile (il sito potrebbe bloccarla). Prova comunque a trasmettere."}
+              ? tr("preview.unsupported")
+              : tr("preview.error")}
             {status === "error" && (
               <button
                 type="button"
                 onClick={() => setAttempt((n) => n + 1)}
                 className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-4 text-xs font-medium text-white active:bg-white/25"
               >
-                <RotateCw className="size-3.5" /> Riprova
+                <RotateCw className="size-3.5" /> {tr("common.retry")}
               </button>
             )}
           </div>
@@ -129,7 +131,7 @@ export function VideoPreview({
       {!controls && status === "playing" && (
         <button
           type="button"
-          aria-label={muted ? "Attiva audio anteprima" : "Disattiva audio anteprima"}
+          aria-label={muted ? tr("preview.unmute") : tr("preview.mute")}
           onClick={() => setMuted((m) => !m)}
           className="absolute right-2 bottom-2 grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
         >

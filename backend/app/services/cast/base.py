@@ -36,6 +36,7 @@ class MediaRequest:
     current_time: float | None = None
     is_image: bool = False
     hls_segment_format: str | None = None  # "fmp4" | "aac" | ... (None = MPEG-TS)
+    hls_video_segment_format: str | None = None  # "fmp4" (None = MPEG-TS video)
     load_timeout: float | None = None  # seconds to wait for the LOAD answer (None = driver default)
 
 

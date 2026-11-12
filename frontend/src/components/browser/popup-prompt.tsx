@@ -4,9 +4,10 @@ import { ExternalLink, ShieldBan, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import type { PopupDecision, PopupRequest } from "@/lib/api/types";
+import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 
-/** Compact prompt for a held popup / redirect: "La pagina vuole aprire: <host>". */
+/** Compact prompt for a held popup / redirect: "The page wants to open: <host>". */
 export function PopupPrompt({
   popup,
   more,
@@ -17,11 +18,12 @@ export function PopupPrompt({
   more: number;
   onDecide: (decision: PopupDecision) => void;
 }) {
-  const opener = hostOf(popup.opener_url) || "questo sito";
+  const t = useT();
+  const opener = hostOf(popup.opener_url) || t("popup.thisSite");
   return (
     <motion.div
       role="alertdialog"
-      aria-label="Richiesta di apertura pagina"
+      aria-label={t("popup.label")}
       initial={{ y: -16, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: -16, opacity: 0 }}
@@ -31,7 +33,7 @@ export function PopupPrompt({
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm">
-            La pagina vuole aprire: <span className="font-semibold break-all">{popup.host}</span>
+            {t("popup.wantsToOpen")} <span className="font-semibold break-all">{popup.host}</span>
           </p>
           <p className="truncate text-xs text-muted-foreground" title={popup.url}>
             {popup.url}
@@ -43,19 +45,19 @@ export function PopupPrompt({
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <Button size="sm" onClick={() => onDecide("open")}>
-          <ExternalLink className="size-4" /> Apri
+          <ExternalLink className="size-4" /> {t("common.open")}
         </Button>
         <Button size="sm" variant="secondary" onClick={() => onDecide("block")}>
-          <X className="size-4" /> Blocca
+          <X className="size-4" /> {t("popup.block")}
         </Button>
         <Button
           size="sm"
           variant="ghost"
           className="col-span-2 text-destructive"
-          title={`Blocca sempre i popup di ${opener}`}
+          title={t("popup.alwaysBlockFrom", { host: opener })}
           onClick={() => onDecide("block_always")}
         >
-          <ShieldBan className="size-4" /> Blocca sempre per questo sito
+          <ShieldBan className="size-4" /> {t("popup.alwaysBlock")}
         </Button>
       </div>
     </motion.div>

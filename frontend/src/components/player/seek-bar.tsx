@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Slider } from "@/components/ui/slider";
+import { useT } from "@/i18n";
 import { formatTime } from "@/lib/format";
 
 /** VOD seek bar: follows playback, lets the user scrub and commits on release. */
@@ -16,13 +17,14 @@ export function SeekBar({
   disabled?: boolean;
   onSeek: (seconds: number) => void;
 }) {
+  const t = useT();
   const [scrub, setScrub] = useState<number | null>(null);
   const value = scrub ?? Math.min(position, duration);
   return (
     <div className="space-y-1">
       <Slider
-        aria-label="Posizione"
-        getAriaValueText={(_, v) => `${formatTime(v)} di ${formatTime(duration)}`}
+        aria-label={t("player.position")}
+        getAriaValueText={(_, v) => t("player.positionOf", { position: formatTime(v), duration: formatTime(duration) })}
         min={0}
         max={Math.max(1, duration)}
         step={1}

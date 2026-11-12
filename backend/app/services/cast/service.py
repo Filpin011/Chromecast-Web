@@ -40,6 +40,9 @@ class _Meta:
     thumbnail: str | None = None
     showing_idle: bool = False
     request: MediaRequest | None = None
+    # The receiver rejected this LOAD (already reported by the HTTP call): an IDLE/ERROR
+    # it broadcasts for it must not toast again nor advance the queue.
+    load_failed: bool = False
 
 
 class CastService:
@@ -98,7 +101,8 @@ class CastService:
         elif event == "finished" and device_id:
             self._spawn(self._on_finished(device_id, self._epoch.get(device_id, 0), message or "FINISHED"))
         elif event == "error":
-            self.hub.toast("error", message or "Cast error")
+            detail = message or "Cast error"
+            self.hub.toast("error", detail, "cast_error", {"detail": detail})
             if device_id:
                 self._push(device_id)
 
@@ -150,6 +154,32 @@ class CastService:
                 urls.add(url)
         return urls
 
+    async def _release_restream(self, device_id: str, new_url: str | None = None) -> None:
+        """``device_id`` is about to replace (or stop) its media: stop the ffmpeg behind
+        the restreamed URL it had loaded unless another device still plays it. Waiting
+        for the idle reaper would hold the upstream connection for about a minute, and
+        single-connection IPTV accounts then reject the next channel."""
+        restream = self.resolver.restream
+        new_job = restream.job_for_url(new_url) if new_url else None
+        meta = self._meta.get(device_id)
+        old_urls = {meta.media_url if meta else None, self.driver.status(device_id).media_url}
+        others: set[str] = set()
+        for other in set(self._meta) | set(self.hub.players):
+            if other == device_id:
+                continue
+            other_meta = self._meta.get(other)
+            if other_meta and other_meta.media_url and not other_meta.showing_idle:
+                others.add(other_meta.media_url)
+            if url := self.driver.status(other).media_url:
+                others.add(url)
+        for url in old_urls:
+            job = restream.job_for_url(url) if url else None
+            if job is None or job is new_job:
+                continue
+            if any(restream.job_for_url(u) is job for u in others):
+                continue
+            await restream.release(job)
+
     def _play_lock(self, device_id: str) -> asyncio.Lock:
         return self._play_locks.setdefault(device_id, asyncio.Lock())
 
@@ -161,14 +191,17 @@ class CastService:
             if self._epoch.get(device_id, 0) != epoch:
                 return  # something else was loaded since this media finished
             meta = self._meta.get(device_id)
-            if meta and meta.showing_idle:
+            if meta and (meta.showing_idle or meta.load_failed):
                 return
             if reason == "ERROR":
                 # the receiver accepted the LOAD and then gave up (dead / expired URL)
                 st = self.driver.status(device_id)
                 if meta is None or (st.media_url not in (None, meta.media_url)):
                     return  # not media we loaded
-                self.hub.toast("error", f"Playback failed on the Chromecast: “{meta.title or meta.media_url}”")
+                title = meta.title or meta.media_url or ""
+                self.hub.toast(
+                    "error", f"Playback failed on the Chromecast: “{title}”", "playback_failed", {"title": title}
+                )
                 await self._play_next(device_id)
                 return
             if await self._play_next(device_id):
@@ -186,7 +219,18 @@ class CastService:
                 await self._play_entry(device_id, entry)
                 return True
             except AppError as exc:
-                self.hub.toast("error", f"Skipping “{entry.item.title}”: {exc.detail}")
+                self.hub.toast(
+                    "error",
+                    f"Skipping “{entry.item.title}”: {exc.detail}",
+                    "queue_skipped",
+                    {
+                        **(exc.params or {}),
+                        "title": entry.item.title,
+                        "detail": exc.detail,
+                        "error_code": exc.code or "",
+                        "error_reason": exc.reason or "",
+                    },
+                )
         return False
 
     # ------------------------------------------------------------ devices
@@ -323,6 +367,7 @@ class CastService:
         differs from the media's own input."""
         await self._ensure_connected(device_id, auto=True)
         load_timeout = None
+        await self._release_restream(device_id, media.cast_url)
         job = self.resolver.restream.job_for_url(media.cast_url)
         if job is not None:
             # start ffmpeg now (overlaps with the receiver launching), and give the LOAD
@@ -337,6 +382,7 @@ class CastService:
             stream_type=media.stream_type,
             subtitles=list(media.subtitles),
             hls_segment_format=media.hls_segment_format,
+            hls_video_segment_format=media.hls_video_segment_format,
             load_timeout=load_timeout,
         )
         self._bump_epoch(device_id)
@@ -347,10 +393,7 @@ class CastService:
             thumbnail=media.thumbnail,
             request=req,
         )
-        try:
-            await self.driver.play_media(device_id, req)
-        except CastError as exc:
-            raise AppError(502, str(exc), "cast_error") from exc
+        await self._load(device_id, req)
         entry = QueueEntry(
             item=QueueItem(
                 id=uuid.uuid4().hex[:12],
@@ -373,6 +416,19 @@ class CastService:
         )
         self.hub.active_device_id = device_id
         self._push(device_id)
+
+    async def _load(self, device_id: str, req: MediaRequest) -> None:
+        """Send the LOAD (epoch already bumped, meta set). A rejected LOAD is reported once,
+        by the caller's 502: a "finished" event the receiver also emits for it (IDLE/ERROR,
+        before or after the rejection arrives) must not toast nor skip to the next item."""
+        try:
+            await self.driver.play_media(device_id, req)
+        except CastError as exc:
+            self._bump_epoch(device_id)  # drops finished events queued under this LOAD
+            meta = self._meta.get(device_id)
+            if meta is not None and meta.request is req:
+                meta.load_failed = True  # and those emitted after the rejection
+            raise AppError(502, str(exc), "cast_error") from exc
 
     async def _play_entry(self, device_id: str, entry: QueueEntry) -> None:
         media = entry.media
@@ -397,12 +453,10 @@ class CastService:
         url = settings.idle_image_url or f"{self.base_url().rstrip('/')}/idle.jpg"
         mime = "image/png" if url.lower().split("?")[0].endswith(".png") else "image/jpeg"
         req = MediaRequest(url=url, mime_type=mime, title="Chromecast Web", is_image=True)
+        await self._release_restream(device_id)
         self._bump_epoch(device_id)
         self._meta[device_id] = _Meta(media_url=url, showing_idle=True, request=req)
-        try:
-            await self.driver.play_media(device_id, req)
-        except CastError as exc:
-            raise AppError(502, str(exc), "cast_error") from exc
+        await self._load(device_id, req)
         self._push(device_id)
         return self.player(device_id)
 
@@ -436,6 +490,7 @@ class CastService:
                 if self.db.get_settings().show_idle_on_stop:
                     return await self._show_idle(device_id)
                 self._bump_epoch(device_id)
+                await self._release_restream(device_id)
                 await d.stop_media(device_id)
                 self._meta.pop(device_id, None)
             elif action == "seek":
@@ -475,9 +530,12 @@ class CastService:
         st = self.driver.status(device_id)
         meta = self._meta.get(device_id)
         if st.stream_type == "LIVE" and meta and meta.request and not meta.showing_idle:
-            # Reloading a live stream jumps to the live edge on every receiver.
+            # Reloading a live stream jumps to the live edge on every receiver. Same
+            # epoch / load_failed handling as any LOAD: a rejected reload is the caller's
+            # 502 only, its IDLE/ERROR broadcast must not toast again nor skip the queue.
+            meta.load_failed = False
             self._bump_epoch(device_id)
-            await self.driver.play_media(device_id, meta.request)
+            await self._load(device_id, meta.request)
         elif st.duration:
             await self.driver.seek(device_id, st.duration)
 

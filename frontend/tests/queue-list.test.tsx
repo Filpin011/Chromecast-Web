@@ -41,7 +41,7 @@ describe("QueueList", () => {
     renderWithProviders(<QueueList deviceId="dev-1" queue={[item("a"), item("b")]} />);
     expect(screen.getByText("Titolo a")).toBeInTheDocument();
     expect(screen.getByText("#2")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Rimuovi Titolo a" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Titolo a" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("dev-1", "a"));
   });
 

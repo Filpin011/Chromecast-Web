@@ -48,7 +48,7 @@ const session: BrowserSession = {
   blocked_count: 0,
   pending_popups: [],
 };
-const other: BrowserSession = { ...session, id: "b2", url: "https://other.example.com/", title: "Altro" };
+const other: BrowserSession = { ...session, id: "b2", url: "https://other.example.com/", title: "More" };
 
 function setup(over: Partial<BrowserWorkspaceProps> = {}) {
   const props: BrowserWorkspaceProps = {
@@ -82,43 +82,55 @@ describe("BrowserWorkspace controls", () => {
   it("Home loads the session's start page in the remote browser", async () => {
     const nav = vi.spyOn(api.browser, "navigate").mockResolvedValue(session);
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Pagina iniziale" }));
+    fireEvent.click(screen.getByRole("button", { name: "Home page" }));
     await waitFor(() => expect(nav).toHaveBeenCalledWith("b1", { url: "https://site.example.com/" }));
   });
 
   it("reload sits in the URL pill and uses the API", async () => {
     const nav = vi.spyOn(api.browser, "navigate").mockResolvedValue(session);
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Ricarica" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(nav).toHaveBeenCalledWith("b1", { action: "reload" }));
+  });
+
+  it("keeps the host readable on narrow phones: the pill's reload moves to the More menu below 400px", async () => {
+    const nav = vi.spyOn(api.browser, "navigate").mockResolvedValue(session);
+    setup();
+    const pillReload = screen.getByRole("button", { name: "Reload" });
+    expect(pillReload).toHaveClass("hidden", "min-[400px]:grid");
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const item = await screen.findByRole("menuitem", { name: "Reload" });
+    expect(item).toHaveClass("min-[400px]:hidden");
+    fireEvent.click(item);
     await waitFor(() => expect(nav).toHaveBeenCalledWith("b1", { action: "reload" }));
   });
 
   it("'+' starts a new session; the tabs button lists sessions to switch to", async () => {
     const { props } = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Nuova sessione" }));
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(props.onNewSession).toHaveBeenCalledTimes(1);
     expect(props.onSwitchSession).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "2 sessioni aperte" }));
-    const list = await screen.findByRole("list", { name: "Sessioni aperte" });
-    expect(list).toHaveTextContent("Altro");
-    fireEvent.click(screen.getByText("Altro"));
+    fireEvent.click(screen.getByRole("button", { name: "2 open sessions" }));
+    const list = await screen.findByRole("list", { name: "Open sessions" });
+    expect(list).toHaveTextContent("More");
+    fireEvent.click(screen.getByText("More"));
     expect(props.onSwitchSession).toHaveBeenCalledWith(other);
   });
 
   it("the menu opens app navigation", async () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-    const nav = await screen.findByRole("navigation", { name: "Menu app" });
-    expect(nav).toHaveTextContent("Libreria");
-    expect(nav).toHaveTextContent("Impostazioni");
+    const nav = await screen.findByRole("navigation", { name: "App menu" });
+    expect(nav).toHaveTextContent("Library");
+    expect(nav).toHaveTextContent("Settings");
   });
 
   it("has a keyboard toggle in the toolbar", () => {
     setup();
-    expect(screen.queryByLabelText("Testo da inviare alla pagina")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Tastiera" }));
-    expect(screen.getByLabelText("Testo da inviare alla pagina")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Text to send to the page")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Keyboard" }));
+    expect(screen.getByLabelText("Text to send to the page")).toBeInTheDocument();
   });
 
   it("overlays the keyboard bar on the page instead of shrinking the fitted viewport", () => {
@@ -126,23 +138,37 @@ describe("BrowserWorkspace controls", () => {
     const canvas = screen.getByTestId("remote-canvas");
     const pageArea = canvas.closest(".flex-col") as HTMLElement;
     const before = pageArea.className;
-    fireEvent.click(screen.getByRole("button", { name: "Tastiera" }));
-    const bar = screen.getByLabelText("Testo da inviare alla pagina").closest("form")!;
+    fireEvent.click(screen.getByRole("button", { name: "Keyboard" }));
+    const bar = screen.getByLabelText("Text to send to the page").closest("form")!;
     // positioned inside the page area (same box as the canvas), not a new row of the column layout
     expect(pageArea).toContainElement(bar);
     expect(bar.className).toMatch(/\babsolute\b/);
     expect(bar.className).toMatch(/\bbottom-0\b/);
     expect(pageArea.className).toBe(before);
-    expect(screen.getByRole("navigation", { name: "Navigazione browser" })).not.toContainElement(bar);
+    expect(screen.getByRole("navigation", { name: "Browser navigation" })).not.toContainElement(bar);
   });
 
   it("top bar controls, including the quick close, are full-size touch targets", () => {
     const { props } = setup();
-    for (const name of ["Menu", "Ricarica", "Chiudi subito la sessione"]) {
+    for (const name of ["Menu", "Reload", "Close the session now"]) {
       const btn = screen.getByRole("button", { name });
       expect(btn.className).toMatch(/size-11/);
     }
-    fireEvent.click(screen.getByRole("button", { name: "Chiudi subito la sessione" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close the session now" }));
     expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it("keeps the 'Fit to screen' pill on one line (Italian label is long) and inside the page", async () => {
+    // a 320×900 phone vs the session's 390×655 viewport: the pill is offered
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(320);
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(900);
+    const { props } = setup();
+    const pill = await screen.findByRole("button", { name: "Fit to screen" });
+    // absolute + centred with -translate-x-1/2: without nowrap its width is capped at half the container
+    expect(pill.className).toMatch(/\bwhitespace-nowrap\b/);
+    expect(pill.className).toContain("max-w-[calc(100%-1rem)]");
+    expect(pill.querySelector(".truncate")).toHaveTextContent("Fit to screen");
+    fireEvent.click(pill);
+    expect(props.onReopen).toHaveBeenCalledWith("mobile", session.url);
   });
 });

@@ -12,7 +12,7 @@ from app.models import MediaResult, PlaylistResult
 from app.services.proxy.restream import RestreamManager
 from app.services.proxy.tokens import TokenRegistry
 from app.services.resolver.service import Resolver, needs_header_proxy
-from tests.fakes import LIVE_MEDIA, MASTER, VOD_MEDIA, FakeProvider, Resource, ytdlp_info
+from tests.fakes import LIVE_MEDIA, MASTER, MIXED_MASTER, VOD_MEDIA, FakeProvider, Resource, ytdlp_info
 from tests.test_m3u import IPTV
 
 BASE = "http://cast.test:8000"
@@ -162,6 +162,83 @@ async def test_input_with_kodi_headers(http, tmp_path):
 
 
 @respx.mock
+async def test_explicit_user_agent_forces_the_proxy(http, tmp_path):
+    """The Chromecast sends its own CrKey UA: a UA the user/playlist asked for needs the proxy,
+    even on a CORS-enabled HLS or a progressive file."""
+    hls_route = respx.get("http://panel.example/live/1.m3u8").respond(200, text=LIVE_MEDIA, headers=ACAO)
+    respx.get("http://panel.example/live/seg100.ts").respond(200, content=b"x", headers=ACAO)
+    respx.get("http://panel.example/movie/1.mp4").respond(
+        200, content=b"x" * 100, headers={**ACAO, "content-type": "video/mp4"}
+    )
+    r = make(http, tmp_path)
+    for value in ("http://panel.example/live/1.m3u8|User-Agent=MyIPTVApp%2F1.0",
+                  "http://panel.example/movie/1.mp4|User-Agent=MyIPTVApp%2F1.0"):
+        m = (await r.resolve(value)).media
+        assert m.proxied and m.cast_url.startswith(f"{BASE}/proxy/"), value
+        tok = m.cast_url.split("/proxy/")[1].split("/")[0]
+        assert r.tokens.get(tok).headers == {"User-Agent": "MyIPTVApp/1.0"}
+    assert hls_route.calls.last.request.headers["user-agent"] == "MyIPTVApp/1.0"
+    # without an explicit UA the same CORS-enabled sources are cast directly
+    assert not (await r.resolve("http://panel.example/live/1.m3u8")).media.proxied
+    assert not (await r.resolve("http://panel.example/movie/1.mp4")).media.proxied
+
+
+YT_MASTER = """#EXTM3U
+#EXT-X-INDEPENDENT-SEGMENTS
+#EXT-X-MEDIA:URI="https://yt.example/a/en/index.m3u8",TYPE=AUDIO,GROUP-ID="234",NAME="English",DEFAULT=NO
+#EXT-X-MEDIA:URI="https://yt.example/a/orig/index.m3u8",TYPE=AUDIO,GROUP-ID="234",NAME="Original",DEFAULT=YES
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2",AUDIO="234"
+https://yt.example/v/720/index.m3u8
+"""
+YT_MEDIA = "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5,\n{}/file/seg.ts\n#EXT-X-ENDLIST\n"
+ID3_ADTS = b"ID3\x04\x00\x00\x00\x00\x00\x3f" + b"\x00" * 63 + b"\xff\xf1\x50\x80\x2e\x7f\xfc" + b"\x00" * 64
+TS = (b"\x47" + b"\x00" * 187) * 3
+
+
+@respx.mock
+async def test_hls_packed_audio_rendition_named_ts_sets_aac_format(http, tmp_path):
+    """YouTube: TS video variant + separate audio rendition whose `seg.ts` is ID3+ADTS AAC.
+    hlsSegmentFormat describes the audio, so it must be "aac" (sniffed, not from the name)."""
+    respx.get("https://yt.example/master.m3u8").respond(200, text=YT_MASTER)
+    respx.get("https://yt.example/v/720/index.m3u8").respond(200, text=YT_MEDIA.format("https://yt.example/v"))
+    respx.get("https://yt.example/v/file/seg.ts").respond(200, content=TS)
+    audio = respx.get("https://yt.example/a/orig/index.m3u8").respond(
+        200, text=YT_MEDIA.format("https://yt.example/a")
+    )
+    respx.get("https://yt.example/a/file/seg.ts").respond(200, content=ID3_ADTS)
+    m = (await make(http, tmp_path).resolve("https://yt.example/master.m3u8")).media
+    assert audio.called  # the DEFAULT=YES rendition of the variant's group
+    assert m.hls_segment_format == "aac" and m.proxied  # no CORS → proxied
+    assert m.hls_video_segment_format is None  # TS video
+    assert m.stream_type == "BUFFERED"
+
+
+@respx.mock
+async def test_hls_segment_format_is_sniffed_from_bytes(http, tmp_path):
+    respx.get("https://cdn.example.com/radio/live.m3u8").respond(200, text=LIVE_MEDIA, headers=ACAO)
+    respx.get("https://cdn.example.com/radio/seg100.ts").respond(200, content=ID3_ADTS, headers=ACAO)
+    respx.get("https://cdn.example.com/tv/live.m3u8").respond(200, text=LIVE_MEDIA, headers=ACAO)
+    respx.get("https://cdn.example.com/tv/seg100.ts").respond(200, content=TS, headers=ACAO)
+    r = make(http, tmp_path)
+    radio = (await r.resolve("https://cdn.example.com/radio/live.m3u8")).media
+    assert radio.hls_segment_format == "aac" and not radio.proxied
+    assert (await r.resolve("https://cdn.example.com/tv/live.m3u8")).media.hls_segment_format is None
+
+
+@respx.mock
+async def test_hls_master_mixing_codec_families_is_proxied(http, tmp_path):
+    """avc1/TS + vp09/fMP4 variants: even with CORS everywhere, cast through the proxy so the
+    receiver only sees the variants matching the probed (TS) format."""
+    respx.get("https://cdn.example.com/yt/master.m3u8").respond(200, text=MIXED_MASTER, headers=ACAO)
+    respx.get("https://cdn.example.com/yt/avc/720/index.m3u8").respond(200, text=VOD_MEDIA, headers=ACAO)
+    respx.route(host="cdn.example.com", path__regex=r"^/yt/avc/720/.*\.ts$").respond(200, content=TS, headers=ACAO)
+    m = (await make(http, tmp_path).resolve("https://cdn.example.com/yt/master.m3u8")).media
+    assert m.proxied and m.cast_url.startswith(BASE + "/proxy/")
+    assert m.hls_segment_format is None  # MPEG-TS
+    assert m.stream_type == "BUFFERED"
+
+
+@respx.mock
 async def test_m3u_returns_playlist_preview(http, tmp_path):
     respx.get("https://lists.example.com/it.m3u").respond(200, text=IPTV)
     res = await make(http, tmp_path).resolve("https://lists.example.com/it.m3u")
@@ -259,7 +336,9 @@ async def test_webpage_nothing_found_hints_interactive_browser(http, tmp_path):
     with pytest.raises(AppError) as e:
         await r.resolve("https://www.example.org/empty-fail", "webpage")
     assert e.value.code == "resolve_failed"
-    assert "interattivo" in e.value.detail
+    assert "interactive browser" in e.value.detail
+    # the UI shows its own (translated) hint for this stable reason
+    assert e.value.reason == "no_stream_on_page"
 
 
 def test_needs_header_proxy():
@@ -295,6 +374,7 @@ async def test_iptv_list_named_m3u8_is_a_playlist(http, tmp_path):
     with pytest.raises(AppError) as e:
         await r.detect_kind("https://down.example.com/x.m3u8")
     assert e.value.code == "resolve_failed"
+    assert e.value.reason == "connect_failed" and e.value.params == {"host": "down.example.com"}
     res = await r.resolve("https://iptv.example.com/tv_channels.m3u8")
     assert isinstance(res, PlaylistResult) and res.channels
 
@@ -418,3 +498,72 @@ async def test_mkv_is_announced_as_mp4(http, tmp_path, media_root):
     assert local.mime_type == "video/mp4" and local.cast_url == BASE + "/local/Movies/film.mkv"
     direct = (await r.resolve("https://cdn.example.com/a/movie.mkv")).media
     assert direct.mime_type == "video/mp4" and not direct.proxied
+
+
+FMP4_VOD = ('#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:6\n#EXT-X-PLAYLIST-TYPE:VOD\n'
+            '#EXT-X-MAP:URI="init.mp4"\n#EXTINF:6,\nseg1.m4s\n#EXT-X-ENDLIST\n')
+FTYP = b"\x00\x00\x00\x18ftypiso6" + b"\x00" * 100
+
+
+@respx.mock
+async def test_hls_cdn_rejecting_the_receiver_origin_is_probed_without_it(http, tmp_path):
+    """Hotlink protection: 403 for a foreign Origin. The proxy sends none, so the stream is
+    proxied, but master/live/segment format still come from a probe without Origin."""
+    seen: list[str | None] = []
+
+    def handler(request):
+        seen.append(request.headers.get("origin"))
+        if request.headers.get("origin"):
+            return httpx.Response(403)
+        if request.url.path.endswith(".m3u8"):
+            return httpx.Response(200, text=FMP4_VOD)
+        return httpx.Response(200, content=FTYP)
+
+    respx.route(host="hotlink.example").mock(side_effect=handler)
+    m = (await make(http, tmp_path).resolve("https://hotlink.example/vod/index.m3u8")).media
+    assert m.proxied and m.cast_url.startswith(BASE + "/proxy/")
+    assert m.stream_type == "BUFFERED"
+    assert m.hls_segment_format == "fmp4" and m.hls_video_segment_format == "fmp4"
+    assert None in seen  # re-probed without Origin
+
+
+FMP4_VIDEO_MASTER = """#EXTM3U
+#EXT-X-MEDIA:URI="https://yt.example/a/orig/index.m3u8",TYPE=AUDIO,GROUP-ID="a",NAME="Original",DEFAULT=YES
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720,CODECS="vp09.00.31.08,mp4a.40.2",AUDIO="a"
+https://yt.example/v/720/index.m3u8
+"""
+
+
+@respx.mock
+async def test_fmp4_video_with_packed_audio_keeps_video_segment_format(http, tmp_path):
+    respx.get("https://yt.example/master.m3u8").respond(200, text=FMP4_VIDEO_MASTER)
+    respx.get("https://yt.example/v/720/index.m3u8").respond(200, text=FMP4_VOD)
+    respx.get("https://yt.example/v/720/seg1.m4s").respond(200, content=FTYP)
+    respx.get("https://yt.example/a/orig/index.m3u8").respond(200, text=YT_MEDIA.format("https://yt.example/a"))
+    respx.get("https://yt.example/a/file/seg.ts").respond(200, content=ID3_ADTS)
+    m = (await make(http, tmp_path).resolve("https://yt.example/master.m3u8")).media
+    assert m.hls_segment_format == "aac" and m.hls_video_segment_format == "fmp4"
+
+
+async def test_local_video_gets_sidecar_subtitles(http, tmp_path, media_root):
+    movies = media_root / "Movies"
+    (movies / "film.it.srt").write_bytes("1\r\n00:00:01,000 --> 00:00:02,5\r\nCiao è\r\n".encode("cp1252"))
+    (movies / "Film.vtt").write_text("WEBVTT\n\n00:01.000 --> 00:02.000\nHi\n")
+    (movies / "film2.en.vtt").write_text("WEBVTT\n")  # another video's subtitles
+    r = make(http, tmp_path, media_root)
+    m = (await r.resolve("Movies/film.mp4")).media
+    assert [(s.url, s.lang, s.label) for s in m.subtitles] == [
+        (BASE + "/local/Movies/film.it.srt?as=vtt", "it", "it"),
+        (BASE + "/local/Movies/Film.vtt", None, "Film.vtt"),
+    ]
+    avi = (await r.resolve("Movies/old.avi")).media
+    assert avi.subtitles == []
+
+
+def test_srt_to_vtt():
+    from app.services.resolver.local import srt_to_vtt
+
+    vtt = srt_to_vtt("﻿1\r\n00:00:01,000 --> 00:00:02,50\r\nHello\r\n\r\n2\r\n01:02:03,4 --> 01:02:04,000\r\nBye")
+    assert vtt == (
+        "WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.500\nHello\n\n2\n01:02:03.400 --> 01:02:04.000\nBye\n"
+    )
