@@ -1,0 +1,55 @@
+[project]
+name = "chromecast-web-backend"
+version = "0.1.0"
+description = "FastAPI backend to control a Chromecast from any browser on the LAN"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.162.5",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.3",
+    "pydantic-settings==2.16.2",
+    "sqlmodel==0.0.49",
+    "httpx==0.28.1",
+    "pychromecast==14.1.1",
+    "zeroconf==0.154.0",
+    "yt-dlp==2026.10.26",
+    "playwright==1.65.1",
+    "adblock==0.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.5.0",
+    "respx==0.23.1",
+    "ruff==0.17.5",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["static/*", "static/filters/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["browser: needs a real Playwright Chromium (skipped when not installed)"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
+ignore = ["B008", "RUF012", "SIM105", "ASYNC109", "ASYNC110", "ASYNC230", "ASYNC240", "RUF006"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501", "B011"]

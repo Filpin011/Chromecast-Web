@@ -1,2 +1,34 @@
-__pycache__
+# OS / editor
 .DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Runtime data (SQLite DB, filter lists, restream temp files)
+data/
+backend/data/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# Env files
+.env
+.env.*
+!.env.example

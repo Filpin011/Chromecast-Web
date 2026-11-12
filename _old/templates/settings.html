@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chromecast Settings</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .card {
+            background-color: #1e1e1e;
+        }
+        .input-field input[type=text]:focus + label {
+            color: #ffffff;
+        }
+        .input-field input[type=text]:focus {
+            border-bottom: 1px solid #ffffff;
+            box-shadow: 0 1px 0 0 #ffffff;
+        }
+        .input-field .prefix.active {
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h4>Chromecast Settings</h4>
+        <div class="card">
+            <div class="card-content">
+                <span class="card-title">Current Settings</span>
+                <p id="current-settings">Loading...</p>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-content">
+                <span class="card-title">Set Chromecast</span>
+                <div class="input-field">
+                    <i class="material-icons prefix">cast</i>
+                    <input id="chromecast-name" type="text" class="validate">
+                    <label for="chromecast-name">Chromecast Name</label>
+                </div>
+                <button id="set-chromecast" class="btn waves-effect waves-light">Set</button>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-content">
+                <span class="card-title">Search for New Devices</span>
+                <button id="search-devices" class="btn waves-effect waves-light">Search</button>
+                <ul id="device-list" class="collection"></ul>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-content">
+                <span class="card-title">Connect to Chromecast</span>
+                <div class="input-field">
+                    <i class="material-icons prefix">cast_connected</i>
+                    <input id="connect-chromecast-name" type="text" class="validate">
+                    <label for="connect-chromecast-name">Chromecast Name</label>
+                </div>
+                <button id="connect-chromecast" class="btn waves-effect waves-light">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fetch current settings
+            fetch('/api/get_settings')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('current-settings').innerText = JSON.stringify(data, null, 2);
+                });
+
+            // Set Chromecast
+            document.getElementById('set-chromecast').addEventListener('click', function() {
+                const name = document.getElementById('chromecast-name').value;
+                fetch('/api/set_chromecast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name })
+                }).then(response => response.json())
+                  .then(data => {
+                      M.toast({html: data.message});
+                  });
+            });
+
+            // Search for new devices
+            document.getElementById('search-devices').addEventListener('click', function() {
+                fetch('/api/search_devices')
+                    .then(response => response.json())
+                    .then(data => {
+                        const deviceList = document.getElementById('device-list');
+                        deviceList.innerHTML = '';
+                        data.devices.forEach(device => {
+                            const li = document.createElement('li');
+                            li.className = 'collection-item';
+                            li.innerText = device;
+                            deviceList.appendChild(li);
+                        });
+                    });
+            });
+
+            // Connect to Chromecast
+            document.getElementById('connect-chromecast').addEventListener('click', function() {
+                const name = document.getElementById('connect-chromecast-name').value;
+                fetch('/api/connect_chromecast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: name })
+                }).then(response => response.json())
+                  .then(data => {
+                      M.toast({html: data.message});
+                  });
+            });
+        });
+    </script>
+</body>
+</html>

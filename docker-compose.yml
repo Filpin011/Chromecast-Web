@@ -1,0 +1,37 @@
+# Docker Compose for Coolify (or plain `docker compose up -d --build`).
+#
+# network_mode: host is REQUIRED:
+#   - mDNS/zeroconf discovery of the Chromecast only works on the host network;
+#   - the Chromecast must reach this server's /proxy and /restream endpoints directly on the LAN.
+# With host networking the app listens on ${PORT:-8000} of the server itself (no port mapping).
+
+services:
+  chromecast-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chromecast-web:latest
+    container_name: chromecast-web
+    restart: unless-stopped
+    network_mode: host
+    # Chromium needs a bigger /dev/shm than Docker's 64MB default.
+    shm_size: "1gb"
+    environment:
+      # URL the CHROMECAST uses to reach the proxy (LAN IP of the server + port).
+      # Leave empty to auto-detect the LAN IP; set it if auto-detection picks the wrong interface.
+      # Example: http://192.168.1.10:8000
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      PORT: ${PORT:-8000}
+      CAST_DRIVER: ${CAST_DRIVER:-pychromecast}
+      DATA_DIR: /data
+      ENABLE_PLAYWRIGHT: ${ENABLE_PLAYWRIGHT:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Local files browsing: uncomment together with the bind mount below.
+      # MEDIA_ROOT: /media
+    volumes:
+      - chromecast-web-data:/data
+      # Optional: local media to cast (read-only).
+      # - /path/on/server/Media:/media:ro
+
+volumes:
+  chromecast-web-data:

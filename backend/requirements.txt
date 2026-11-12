@@ -1,0 +1,11 @@
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+pydantic-settings==2.16.2
+sqlmodel==0.0.49
+httpx==0.28.1
+pychromecast==14.1.1
+zeroconf==0.154.0
+yt-dlp==2026.10.26
+playwright==1.65.1
+adblock==0.6.0
