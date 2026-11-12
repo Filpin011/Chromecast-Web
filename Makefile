@@ -9,7 +9,8 @@ BACKEND_PORT ?= 8000
 FRONTEND_PORT ?= 3000
 
 .PHONY: help setup setup-backend setup-frontend browsers dev dev-backend dev-frontend serve \
-        test test-backend test-browser test-frontend lint build docker docker-up clean
+        test test-backend test-browser test-frontend lint build docker docker-up clean \
+        demo screenshots brand
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n",$$1,$$2}'
@@ -61,6 +62,17 @@ lint: ## ruff + eslint
 
 build: ## Static export of the frontend into frontend/out
 	cd frontend && npm run build
+
+demo: build ## Fake Chromecast + fictional demo data (playlists, history, a live stream) on :8000
+	cd backend && .venv/bin/python scripts/demo.py --port $(BACKEND_PORT)
+
+screenshots: build ## Regenerate docs/screenshots/*.png and docs/assets/hero.png (runs its own demo)
+	$(VPY) -m pip install -q pillow
+	cd backend && .venv/bin/python scripts/screenshots.py
+
+brand: ## Render icons, favicon and social preview from docs/assets/icon*.svg
+	$(VPY) -m pip install -q pillow
+	cd backend && .venv/bin/python scripts/brand.py
 
 docker: ## Build the Docker image
 	docker build -t chromecast-web:latest .
