@@ -1,0 +1,46 @@
+name: Bug report
+description: Chromecast Web does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Independent, unofficial project. Never paste public URLs or IPs of your server, stream URLs with
+        credentials, personal playlists or tokens. Security problems: report them privately (see the link on the
+        "New issue" page).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: App version / Chromecast model / Browser and device / Deploy mode
+      placeholder: "0.1.0 / Chromecast Ultra / Safari on iPhone 15 / Docker on Coolify (host network)"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source type
+      options:
+        - Direct URL (HLS / DASH / MP4 / TS)
+        - Web page (headless browser)
+        - yt-dlp site (YouTube, ...)
+        - M3U / IPTV playlist
+        - Local file
+        - Not related to a source
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server logs
+      description: Container or backend logs around the problem (remove private URLs and IPs).
+      render: text
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console errors
+      render: text

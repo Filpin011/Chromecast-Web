@@ -7,6 +7,9 @@
 
 services:
   chromecast-web:
+    # Builds from source (Coolify "Docker Compose" build pack). To use the published multi-arch image instead
+    # (linux/amd64, linux/arm64), remove `build:` and set `image: ghcr.io/filpin011/chromecast-web:latest`
+    # (pulls anonymously only once the GHCR package has been made public, see CONTRIBUTING.md › Releases).
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,7 +29,10 @@ services:
       DATA_DIR: /data
       ENABLE_PLAYWRIGHT: ${ENABLE_PLAYWRIGHT:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Local files browsing: uncomment together with the bind mount below.
+      # Download/refresh the uBlock Origin filter lists every 24h ("false" = bundled fallback list only).
+      FILTERS_AUTO_UPDATE: ${FILTERS_AUTO_UPDATE:-true}
+      # Local files browsing: uncomment together with the bind mount below. Not wired to ${MEDIA_ROOT}: an empty
+      # value would not mean "disabled".
       # MEDIA_ROOT: /media
     volumes:
       - chromecast-web-data:/data
