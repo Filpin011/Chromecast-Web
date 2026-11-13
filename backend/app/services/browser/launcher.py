@@ -19,6 +19,25 @@ STEALTH_JS = """
 Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => undefined });
 window.chrome = window.chrome || { runtime: {} };
 Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en'] });
+// Anti-devtools scripts (e.g. "disable-devtool", which redirects to about:blank) detect the CDP connection
+// Playwright keeps open: the attached inspector serialises console arguments, firing getters on logged
+// objects and slowing console.table down measurably. Nothing here reads page console output, so turn the
+// console methods into no-ops that still look native.
+(() => {
+  const toString = Function.prototype.toString;
+  for (const k of ['log', 'debug', 'info', 'warn', 'error', 'table', 'dir', 'dirxml', 'clear', 'trace',
+                   'group', 'groupCollapsed', 'groupEnd', 'count', 'countReset', 'time', 'timeLog', 'timeEnd',
+                   'profile', 'profileEnd', 'assert']) {
+    const orig = console[k];
+    if (typeof orig !== 'function') continue;
+    const noop = function () {};
+    try {
+      Object.defineProperty(noop, 'name', { value: k });
+      Object.defineProperty(noop, 'toString', { value: toString.bind(orig) });
+      console[k] = noop;
+    } catch (e) {}
+  }
+})();
 """
 # The full Chromium in "new" headless mode, not chromium-headless-shell: the shell's brand
 # is "HeadlessChrome", which no UA override hides from the Sec-CH-UA client hints or
