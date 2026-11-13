@@ -1,12 +1,21 @@
 "use client";
 
-import { Cast, Compass, ListPlus, Star } from "lucide-react";
+import { Cast, Compass, ListPlus, MonitorPlay, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
+/** Shrinkable primary column + one `auto` column per icon button (static strings for Tailwind). */
+const COLUMNS = [
+  "grid-cols-[minmax(0,1fr)]",
+  "grid-cols-[minmax(0,1fr)_auto]",
+  "grid-cols-[minmax(0,1fr)_auto_auto]",
+  "grid-cols-[minmax(0,1fr)_auto_auto_auto]",
+  "grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]",
+];
+
 /**
- * The four primary actions for any castable item.
+ * The primary actions for any castable item (cast, plus the optional icon buttons).
  *
  * The primary column is `minmax(0,1fr)` (a plain `1fr` cannot shrink below the label's min-content
  * width and pushes the icon buttons out of the card on 360px phones). It is a container so the
@@ -17,6 +26,7 @@ export function MediaActions({
   onQueue,
   onFavorite,
   onOpenBrowser,
+  onWatch,
   busy,
   favorited,
   className,
@@ -25,13 +35,16 @@ export function MediaActions({
   onQueue?: () => void;
   onFavorite?: () => void;
   onOpenBrowser?: () => void;
+  /** Play it in the full local player on this device. */
+  onWatch?: () => void;
   busy?: boolean;
   favorited?: boolean;
   className?: string;
 }) {
   const t = useT();
+  const icons = [onWatch, onQueue, onFavorite, onOpenBrowser].filter(Boolean).length;
   return (
-    <div className={cn("@container grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2", className)}>
+    <div className={cn("@container grid gap-2", COLUMNS[icons], className)}>
       <Button
         size="lg"
         onClick={onCast}
@@ -44,6 +57,11 @@ export function MediaActions({
         <span className="truncate @[22rem]:hidden">{t("media.castShort")}</span>
         <span className="hidden truncate @[22rem]:inline">{t("media.castNow")}</span>
       </Button>
+      {onWatch && (
+        <Button size="icon-lg" variant="secondary" aria-label={t("localPlayer.watchHere")} title={t("localPlayer.watchHere")} onClick={onWatch} className="rounded-xl">
+          <MonitorPlay className="size-5" />
+        </Button>
+      )}
       {onQueue && (
         <Button size="icon-lg" variant="secondary" aria-label={t("media.addToQueue")} onClick={onQueue} disabled={busy} className="rounded-xl">
           <ListPlus className="size-5" />

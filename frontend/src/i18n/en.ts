@@ -286,6 +286,18 @@ export const en = {
   "player.stop": "Stop",
   "player.idleImageShort": "Idle image",
   "player.commandFailed": "Command failed",
+  // local ("Watch here") player
+  "localPlayer.watchHere": "Watch here",
+  "localPlayer.watchOnThisDevice": "Watch on this device",
+  "localPlayer.watchHereName": "Watch {name} here",
+  "localPlayer.thisDevice": "This device",
+  "localPlayer.sendToTv": "Send to TV",
+  "localPlayer.fullscreen": "Full screen",
+  "localPlayer.exitFullscreen": "Exit full screen",
+  "localPlayer.pip": "Picture in picture",
+  "localPlayer.quality": "Quality",
+  "localPlayer.auto": "Auto",
+  "localPlayer.error": "Can’t play this stream here (the site may be blocking it). You can still send it to the TV.",
   // media
   "media.castNow": "Cast now",
   "media.castShort": "Cast",

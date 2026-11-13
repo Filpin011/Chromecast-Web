@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ImageIcon,
   ListOrdered,
+  MonitorPlay,
   Radio,
   Redo2,
   RotateCcw,
@@ -24,10 +25,12 @@ import type { Device, PlayerState } from "@/lib/api/types";
 import { formatTime } from "@/lib/format";
 import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
+import { tvMedia } from "@/lib/local-player/sources";
 import { extrapolatePosition, isLive } from "@/lib/player";
 import { errorMessage } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/stores/app-store";
+import { openLocalPlayer } from "@/stores/local-player-store";
 import { Artwork } from "./artwork";
 import { LiveBadge } from "./live-badge";
 import { PlayPauseButton } from "./play-pause-button";
@@ -39,7 +42,7 @@ import { VolumeControl } from "./volume-control";
 /** Shown only when the transport row is at least 384px wide (2×44 + 4×48 + 72+8 + 6×4 gap = 384). */
 const NARROW_HIDDEN = "hidden @min-[384px]/transport:inline-flex";
 
-function SkipButton({
+export function SkipButton({
   seconds,
   onClick,
   disabled,
@@ -96,6 +99,14 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
     } catch (e) {
       toast.error(errorMessage(e, t("player.trackFailed")));
     }
+  };
+
+  const watchHere = () => {
+    const media = tvMedia(device.id, player, position);
+    if (!media) return;
+    void run("pause"); // paused, not stopped: "Send to TV" resumes it from where this device got to
+    onClose?.();
+    openLocalPlayer(media);
   };
 
   const showIdle = async () => {
@@ -218,6 +229,16 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
             <VolumeControl level={player.volume_level} muted={player.muted} onCommand={run} />
 
             <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={watchHere}
+                disabled={!active || !player.original_input}
+                className="col-span-2 gap-2"
+              >
+                <MonitorPlay className="size-4" />
+                {t("localPlayer.watchOnThisDevice")}
+              </Button>
               <Button variant="secondary" size="lg" onClick={() => run("stop")} disabled={!active} className="gap-2">
                 <Square className="size-4" fill="currentColor" />
                 {t("player.stop")}

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { DevicePickerSheet } from "@/components/devices/device-picker-sheet";
 import { MiniPlayer } from "@/components/player/mini-player";
+import { LocalPlayerSheet } from "@/components/player/local-player-sheet";
 import { NowPlayingSheet } from "@/components/player/now-playing-sheet";
 import { isActivePlayback } from "@/hooks/use-app-state";
 import { useIsDesktop } from "@/hooks/use-media-query";
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <MiniPlayer visible={showMini} />
       {!immersive && <BottomTabBar />}
       <NowPlayingSheet />
+      <LocalPlayerSheet />
       <DevicePickerSheet />
       {/* Inside the shell element so its --tabbar-h / --mini-h overrides reach the toast offsets. */}
       <AppToaster isDesktop={isDesktop} immersive={immersive} />

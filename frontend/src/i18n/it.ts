@@ -282,6 +282,18 @@ export const it: Messages = {
   "player.stop": "Stop",
   "player.idleImageShort": "Immagine attesa",
   "player.commandFailed": "Comando non riuscito",
+  // player locale ("Guarda qui")
+  "localPlayer.watchHere": "Guarda qui",
+  "localPlayer.watchOnThisDevice": "Guarda su questo dispositivo",
+  "localPlayer.watchHereName": "Guarda {name} qui",
+  "localPlayer.thisDevice": "Questo dispositivo",
+  "localPlayer.sendToTv": "Invia alla TV",
+  "localPlayer.fullscreen": "Schermo intero",
+  "localPlayer.exitFullscreen": "Esci da schermo intero",
+  "localPlayer.pip": "Picture-in-picture",
+  "localPlayer.quality": "Qualità",
+  "localPlayer.auto": "Automatica",
+  "localPlayer.error": "Impossibile riprodurre qui questo flusso (il sito potrebbe bloccarlo). Puoi comunque inviarlo alla TV.",
   // media
   "media.castNow": "Trasmetti ora",
   "media.castShort": "Trasmetti",

@@ -15,8 +15,10 @@ import { ApiError } from "@/lib/api";
 import type { Channel, ResolvedMedia } from "@/lib/api/types";
 import { useT } from "@/i18n";
 import { hostOf, SOURCE_LABEL_KEY } from "@/lib/format";
+import { seekAfterCast } from "@/lib/local-player/sources";
 import { errorDescription } from "@/lib/query";
 import { cn } from "@/lib/utils";
+import { openLocalPlayer } from "@/stores/local-player-store";
 import { MediaActions } from "./media-actions";
 
 export function browserHref(url: string): string {
@@ -108,6 +110,17 @@ export function MediaResultCard({ media }: { media: ResolvedMedia }) {
             addFav.mutate({ title: media.title, input, source_kind: media.source_kind, thumbnail: media.thumbnail })
           }
           onOpenBrowser={isWeb ? () => router.push(browserHref(input)) : undefined}
+          onWatch={() => {
+            setPreviewing(false); // one connection at a time (single-connection IPTV)
+            openLocalPlayer({
+              title: media.title,
+              subtitle: hostOf(input),
+              poster: media.thumbnail,
+              source: { src: media.preview_url, mimeType: media.mime_type },
+              onCast: (resumeAt) =>
+                void cast({ input, kind: media.source_kind, title: media.title }).then((p) => seekAfterCast(p, resumeAt)),
+            });
+          }}
         />
       </div>
     </motion.article>

@@ -17,10 +17,12 @@ import { useDebounced } from "@/hooks/use-debounced";
 import { api } from "@/lib/api";
 import type { Channel } from "@/lib/api/types";
 import { channelInput, preferredChannelLayout, type ChannelLayout } from "@/lib/channels";
+import { channelMedia, seekAfterCast } from "@/lib/local-player/sources";
 import { qk } from "@/lib/query";
 import { readStorage, writeStorage } from "@/lib/storage";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { openLocalPlayer } from "@/stores/local-player-store";
 
 const PAGE = 200;
 const LAYOUT_KEY = "cw.channels.layout";
@@ -75,6 +77,8 @@ function PlaylistView() {
   const onAction = (action: ChannelAction, c: Channel) => {
     if (action === "queue") void cast(channelRequest(c, true));
     else if (action === "preview") setPreview(c);
+    else if (action === "watch")
+      openLocalPlayer(channelMedia(c, { onCast: (at) => void cast(channelRequest(c)).then((p) => seekAfterCast(p, at)) }));
     else addFavorite.mutate({ title: c.name, input: channelInput(c), source_kind: "direct", thumbnail: c.logo });
   };
 
