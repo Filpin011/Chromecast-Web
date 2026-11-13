@@ -23,14 +23,18 @@ function DropdownMenuContent({
   side = "bottom",
   sideOffset = 4,
   className,
+  container,
   ...props
 }: MenuPrimitive.Popup.Props &
   Pick<
     MenuPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
-  >) {
+  > &
+  /** Where to portal the menu (default: body). A full-screen element must host its own menus. */
+  Pick<MenuPrimitive.Portal.Props, "container">) {
+  // null would mean "container not mounted yet" to Base UI (renders nothing): fall back to body
   return (
-    <MenuPrimitive.Portal>
+    <MenuPrimitive.Portal container={container ?? undefined}>
       <MenuPrimitive.Positioner
         className="isolate z-50 outline-none"
         align={align}

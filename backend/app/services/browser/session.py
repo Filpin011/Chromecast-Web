@@ -148,6 +148,7 @@ class RemoteBrowserSession:
         self._tasks: set[asyncio.Task[Any]] = set()
         self._seen_urls: set[str] = set()  # sniff.stream_key() of every URL already handled
         self._manifest_frames: set[str] = set()  # frames that loaded an HLS/DASH manifest
+        self._manifest_hosts: set[str] = set()  # hosts that served an HLS/DASH manifest
         # ad blocking / popups
         self.filters = filters
         self._settings = settings or Settings
@@ -713,11 +714,18 @@ class RemoteBrowserSession:
         frame_url = ""
         with contextlib.suppress(Exception):
             frame_url = request.frame.url or ""
+        host = urlsplit(url).netloc.lower()
+        ct = (content_type or "").split(";")[0].strip().lower()
         if kind in ("hls", "dash"):
             self._manifest_frames.add(frame_url)
+            self._manifest_hosts.add(host)
         elif frame_url in self._manifest_frames:
             # progressive hit (hash-named .ts, fMP4 part, video/mp2t behind ?id=) in a frame
             # that is already playing an HLS/DASH manifest: one of its segments
+            return
+        elif ct in sniff.SEGMENT_CTS and host in self._manifest_hosts:
+            # segment-typed body from the host serving a manifest, fetched outside the player frame
+            # (worker / service worker / sibling frame), often disguised (``/1794557807184.json``)
             return
         self._seen_urls.add(key)
         self._spawn(self._capture(request, url, kind, content_type))

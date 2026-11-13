@@ -1,7 +1,7 @@
 "use client";
 
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Cast, Eye, ListPlus, MoreVertical, Star, Tv } from "lucide-react";
+import { Cast, Eye, ListPlus, MonitorPlay, MoreVertical, Star, Tv } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Thumb } from "@/components/common/thumb";
 import {
@@ -20,12 +20,13 @@ import { cn } from "@/lib/utils";
 export type { ChannelLayout } from "@/lib/channels";
 
 /** Secondary per-channel actions (the tap itself casts right away). */
-export type ChannelAction = "queue" | "favorite" | "preview";
+export type ChannelAction = "queue" | "favorite" | "preview" | "watch";
 
 const ACTIONS: { action: ChannelAction; label: MessageKey; icon: typeof Cast }[] = [
   { action: "queue", label: "media.addToQueue", icon: ListPlus },
   { action: "favorite", label: "media.addToFavorites", icon: Star },
   { action: "preview", label: "common.preview", icon: Eye },
+  { action: "watch", label: "localPlayer.watchHere", icon: MonitorPlay },
 ];
 
 /**

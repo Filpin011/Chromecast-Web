@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, Play, Radar } from "lucide-react";
+import { Bookmark, Cast, ListPlus, MonitorPlay, Play, Radar } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export function CapturedList({
   onCast,
   onQueue,
   onBookmark,
+  onWatch,
   busy,
 }: {
   streams: CapturedStream[];
@@ -26,6 +27,8 @@ export function CapturedList({
   /** Add to the device queue (same actions as the stream panel). */
   onQueue?: (s: CapturedStream) => void;
   onBookmark?: (s: CapturedStream) => void;
+  /** Play it in the full local player on this device. */
+  onWatch?: (s: CapturedStream) => void;
   busy?: boolean;
 }) {
   const t = useT();
@@ -74,6 +77,11 @@ export function CapturedList({
               <Button className="gap-1.5" disabled={busy} onClick={() => onCast(s)} aria-label={t("captured.castName", { name: shortUrl(s.url, 30) })}>
                 <Cast className="size-4" /> {t("common.cast")}
               </Button>
+              {onWatch && (
+                <Button variant="secondary" className="gap-1.5" onClick={() => onWatch(s)} aria-label={t("localPlayer.watchHereName", { name: shortUrl(s.url, 30) })}>
+                  <MonitorPlay className="size-4" /> {t("localPlayer.watchHere")}
+                </Button>
+              )}
               {onQueue && (
                 <Button variant="secondary" className="gap-1.5" disabled={busy} onClick={() => onQueue(s)} aria-label={t("captured.queueName", { name: shortUrl(s.url, 30) })}>
                   <ListPlus className="size-4" /> {t("common.queue")}

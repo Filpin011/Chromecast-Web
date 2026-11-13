@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, Play, X } from "lucide-react";
+import { Bookmark, Cast, ListPlus, MonitorPlay, Play, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ export interface StreamPanelProps {
   onQueue: (s: CapturedStream) => void;
   onPlay: (s: CapturedStream) => void;
   onBookmark: (s: CapturedStream) => void;
+  /** Play it in the full local player on this device. */
+  onWatch?: (s: CapturedStream) => void;
   busy?: boolean;
 }
 
@@ -68,6 +70,7 @@ export function StreamPanel({
   onQueue,
   onPlay,
   onBookmark,
+  onWatch,
   busy,
 }: StreamPanelProps) {
   const t = useT();
@@ -119,10 +122,11 @@ export function StreamPanel({
         </div>
       )}
 
-      <div className="mt-3 grid grid-cols-4 gap-2">
+      <div className={cn("mt-3 grid gap-2", onWatch ? "grid-cols-5" : "grid-cols-4")}>
         <ActionButton icon={Cast} label={t("common.cast")} primary onClick={() => onCast(stream)} disabled={busy} />
         <ActionButton icon={ListPlus} label={t("common.queue")} onClick={() => onQueue(stream)} disabled={busy} />
         <ActionButton icon={Play} label={t("common.preview")} onClick={() => onPlay(stream)} />
+        {onWatch && <ActionButton icon={MonitorPlay} label={t("localPlayer.watchHere")} onClick={() => onWatch(stream)} />}
         <ActionButton icon={Bookmark} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
       </div>
     </motion.section>

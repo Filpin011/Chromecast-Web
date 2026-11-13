@@ -34,10 +34,15 @@ export function TrackPicker({
   tracks,
   activeIds,
   onChange,
+  container,
+  className,
 }: {
   tracks: MediaTrack[];
   activeIds: number[];
   onChange: (ids: number[]) => void;
+  /** Portal target for the menu (the full-screen element, when the player is full screen). */
+  container?: HTMLElement | null;
+  className?: string;
 }) {
   const tr = useT();
   const text = tracks.filter((t) => t.type === "TEXT");
@@ -46,10 +51,10 @@ export function TrackPicker({
   const subsOn = text.some((t) => activeIds.includes(t.id));
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={tr("tracks.label")} />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={tr("tracks.label")} className={className} />}>
         <Captions className={subsOn ? "size-5 text-primary" : "size-5"} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
+      <DropdownMenuContent align="end" className="w-60" container={container}>
         {text.length > 0 && (
           <DropdownMenuGroup>
             <DropdownMenuLabel>{tr("tracks.subtitles")}</DropdownMenuLabel>

@@ -43,10 +43,12 @@ import {
   type ViewportMode,
 } from "@/lib/browser-session";
 import { rankCaptured } from "@/lib/captured";
+import { capturedMedia } from "@/lib/local-player/sources";
 import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/query";
+import { openLocalPlayer } from "@/stores/local-player-store";
 import { useUiStore } from "@/stores/ui-store";
 import { AdblockButton } from "./adblock-button";
 import { AppMenuSheet, SessionsSheet } from "./browser-sheets";
@@ -129,6 +131,17 @@ export function BrowserWorkspace({
   const [dismissedTop, setDismissedTop] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const actions = useStreamActions(session.id, session.title);
+  const watch = (s: CapturedStream) => {
+    haptic();
+    setListOpen(false);
+    openLocalPlayer(
+      capturedMedia(s, {
+        title: s.title ?? session.title,
+        poster: s.thumbnail ?? snapshots[s.id] ?? null,
+        onCast: () => actions.cast(s),
+      }),
+    );
+  };
 
   const ranked = useMemo(() => rankCaptured(state.captured), [state.captured]);
   const top = ranked[0] ?? null;
@@ -303,6 +316,7 @@ export function BrowserWorkspace({
                   onQueue={actions.queue}
                   onPlay={setPreview}
                   onBookmark={actions.favorite}
+                  onWatch={watch}
                   busy={actions.busy}
                 />
               )}
@@ -340,6 +354,7 @@ export function BrowserWorkspace({
               onCast={actions.cast}
               onQueue={actions.queue}
               onBookmark={actions.favorite}
+              onWatch={watch}
               busy={actions.busy}
             />
           </div>
@@ -415,6 +430,7 @@ export function BrowserWorkspace({
               onCast={actions.cast}
               onQueue={actions.queue}
               onBookmark={actions.favorite}
+              onWatch={watch}
               busy={actions.busy}
             />
           </div>
