@@ -6,7 +6,7 @@
 ############################
 # The static export is architecture-independent: build it natively on the build host (no QEMU) even when the
 # image targets linux/arm64.
-FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:25-bookworm-slim AS frontend
 WORKDIR /src/frontend
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY frontend/package.json frontend/package-lock.json ./
