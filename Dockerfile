@@ -18,7 +18,7 @@ RUN npm run build
 ############################
 # 2) Runtime: Python + ffmpeg + Chromium
 ############################
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/Filpin011/Chromecast-Web" \
       org.opencontainers.image.title="Chromecast Web" \
