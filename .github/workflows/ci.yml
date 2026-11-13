@@ -70,7 +70,7 @@ jobs:
       # The release builds linux/amd64 + linux/arm64: build both here too, so an arm64-only break (apt/Playwright
       # deps, a missing aarch64 wheel) fails the PR instead of the release that already tagged.
       - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build image for linux/amd64 + linux/arm64 (no push)
         uses: docker/build-push-action@v6
         with:
