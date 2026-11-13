@@ -26,6 +26,11 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      # react and react-dom must move together: mismatched versions fail at import time
+      react:
+        patterns:
+          - react
+          - react-dom
       dev-dependencies:
         dependency-type: development
   - package-ecosystem: docker
