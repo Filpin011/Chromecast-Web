@@ -1,10 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/icon-256.png" width="112" height="112" alt="Icona di Chromecast Web">
-
-# Chromecast Web
-
-**Trasmetti dirette, playlist IPTV e video dal web sulla TV — da qualsiasi telefono della rete di casa.**
+<img src="docs/assets/banner-it.jpg" width="100%" alt="Chromecast Web — trasmetti dirette, playlist IPTV e video dal web sulla TV">
 
 Un'app web self-hosted (FastAPI + Next.js) che trasforma qualunque browser in un telecomando completo per il
 Chromecast, con un browser remoto integrato che trova da solo il video dentro le pagine web.
@@ -82,6 +78,11 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
     <td align="center"><img src="docs/screenshots/now-playing-light.png" width="200" alt="Tema chiaro"><br><sub>Tema chiaro</sub></td>
   </tr>
 </table>
+
+**Sulla TV** — la schermata di attesa mostrata quando non è in riproduzione nulla (puoi usare un'immagine tua in
+**Impostazioni**):
+
+<p align="center"><img src="backend/app/static/idle.jpg" width="100%" alt="Schermata di attesa sulla TV: l'icona di Chromecast Web con le onde del cast e &quot;Ready to cast&quot;"></p>
 
 <details>
 <summary><b>Desktop</b></summary>

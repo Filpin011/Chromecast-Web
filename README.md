@@ -1,10 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/icon-256.png" width="112" height="112" alt="Chromecast Web icon">
-
-# Chromecast Web
-
-**Cast live streams, IPTV playlists and web videos to your TV — from any phone on your home network.**
+<img src="docs/assets/banner.jpg" width="100%" alt="Chromecast Web — cast live streams, IPTV playlists and web videos to your TV">
 
 A self-hosted web app (FastAPI + Next.js) that turns any browser into a full remote for your Chromecast,
 with a built-in remote browser that finds the video inside web pages for you.
@@ -80,6 +76,10 @@ with a built-in remote browser that finds the video inside web pages for you.
     <td align="center"><img src="docs/screenshots/now-playing-light.png" width="200" alt="Light theme"><br><sub>Light theme</sub></td>
   </tr>
 </table>
+
+**On the TV** — the idle screen shown when nothing is playing (you can use your own image in **Settings**):
+
+<p align="center"><img src="backend/app/static/idle.jpg" width="100%" alt="Idle screen on the TV: the Chromecast Web icon with cast waves and &quot;Ready to cast&quot;"></p>
 
 <details>
 <summary><b>Desktop</b></summary>
