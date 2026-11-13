@@ -227,6 +227,25 @@ async def test_segments_and_playlist_reloads_are_not_new_captures():
     assert len(urls) == 2 and urls[0].startswith(live) and urls[1].endswith("other/index.m3u8?ch=2")
 
 
+async def test_disguised_segments_from_the_manifest_host_are_not_captures():
+    embed = "https://player.example.net/embed"
+    live = "https://edge.example.xyz/token-abc/index.m3u8"
+    prov = FakeProvider(
+        site={PAGE: [
+            Resource(live, "application/vnd.apple.mpegurl", MASTER, frame_url=embed),
+            # timestamp-named segments served as .json, requested outside the player frame
+            Resource("https://edge.example.xyz/token-abc/1794557807184.json", "video/mp2t"),
+            Resource("https://edge.example.xyz/token-abc/1794557810808.json", "video/mp2t"),
+            # a real progressive stream from another host is still captured
+            Resource("https://vod.example.com/movie.mp4", "video/mp4"),
+        ]},
+        titles={PAGE: "Live"},
+    )
+    s = await manager(prov).create(PAGE)
+    await settle()
+    assert sorted(c.url for c in s.captured) == sorted([live, "https://vod.example.com/movie.mp4"])
+
+
 async def test_session_broadcasts_omit_thumbnails_but_first_snapshot_has_them():
     s = await manager(site()).create(PAGE)
     await settle()
