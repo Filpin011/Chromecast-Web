@@ -8,8 +8,9 @@ import pytest
 from app.errors import AppError
 from app.models import Settings, Viewport
 from app.services.browser.session import BrowserManager, normalize_url
+from app.services.proxy import hls
 from app.services.resolver.service import HlsInfo
-from tests.fakes import MASTER, FakeFrame, FakeProvider, FakeRequest, Resource
+from tests.fakes import DEMUXED_MASTER, MASTER, FakeFrame, FakeProvider, FakeRequest, Resource
 
 PAGE = "https://tv.example.com/live"
 M3U8 = "https://cdn.example.com/hls/master.m3u8?tok=1"
@@ -352,4 +353,183 @@ async def test_pruned_captures_are_announced_with_a_session_snapshot(monkeypatch
     announced = {m["data"]["id"] for m in msgs if m["type"] == "captured"}
     assert announced <= kept  # the pruned newcomer was never sent as "captured"
     assert all("movie9" not in c.url for c in s.captured)
+    await mgr.shutdown()
+
+
+# ---------------------------------------------------------------- demuxed HLS grouping
+
+SHOW = "https://cdn.example.com/show/"
+SHOW_MASTER = SHOW + "master.m3u8?tok=A"
+HLS_CT = "application/vnd.apple.mpegurl"
+
+
+def child(path, tok="B"):
+    # same playlist as referenced by the master, but the CDN rotated the token
+    return f"{SHOW}{path}?tok={tok}"
+
+
+async def demux_probe(url, headers):
+    if "master" in url:
+        return HlsInfo(is_master=True, is_live=False, width=1280, height=720,
+                       child_urls=hls.child_playlist_urls(DEMUXED_MASTER, url))
+    if "/audio/" in url:
+        return HlsInfo(is_master=False, is_live=False, media_type="audio")
+    if "/subs/" in url:
+        return HlsInfo(is_master=False, is_live=False, media_type="subtitles")
+    return HlsInfo(is_master=False, is_live=False, width=1280, height=720)
+
+
+def demux_site(resources):
+    return FakeProvider(
+        site={PAGE: resources},
+        titles={PAGE: "Film"},
+        evaluate=lambda js, arg: {"x": 0, "y": 0, "width": 320, "height": 180, "vw": 1280, "vh": 720}
+        if "querySelectorAll('video')" in js else None,
+    )
+
+
+def demux_manager(provider):
+    return BrowserManager(provider, hls_probe=demux_probe, preview=lambda u, h: "/proxy/tok/x.m3u8")
+
+
+def hls_req(url):
+    return FakeRequest(url, {}, FakeFrame(PAGE)), HLS_CT
+
+
+async def test_children_captured_after_their_master_are_not_listed():
+    prov = demux_site([
+        Resource(SHOW_MASTER, HLS_CT, DEMUXED_MASTER),
+        Resource(child("video/720.m3u8"), HLS_CT),
+        Resource(child("audio/hi/ita.m3u8"), HLS_CT),
+    ])
+    mgr = demux_manager(prov)
+    s = await mgr.create(PAGE)
+    await settle()
+    assert [c.url for c in s.captured] == [SHOW_MASTER]
+    q = s.subscribe()
+    q.get_nowait()
+    # later reloads of any child, with yet another token, are ignored too
+    s._on_request(*hls_req(child("audio/lo/eng.m3u8", "C")))
+    s._on_request(*hls_req(child("subs/ita.m3u8", "D")))
+    await settle()
+    assert [c.url for c in s.captured] == [SHOW_MASTER]
+    assert not [m for m in (q.get_nowait() for _ in range(q.qsize())) if m["type"] == "captured"]
+    await mgr.shutdown()
+
+
+async def test_children_captured_before_their_master_are_dropped_when_it_arrives():
+    prov = demux_site([
+        Resource(child("video/720.m3u8"), HLS_CT),
+        Resource(child("audio/hi/ita.m3u8"), HLS_CT),
+    ])
+    mgr = demux_manager(prov)
+    s = await mgr.create(PAGE)
+    await settle()
+    assert len(s.captured) == 2
+    audio = next(c for c in s.captured if "/audio/" in c.url)
+    video = next(c for c in s.captured if "/video/" in c.url)
+    assert audio.media_type == "audio" and audio.quality is None and audio.height is None
+    assert video.media_type is None and audio.score < video.score  # audio-only ranked last
+    q = s.subscribe()
+    q.get_nowait()
+    s._on_request(*hls_req(SHOW_MASTER))
+    await settle()
+    assert [c.url for c in s.captured] == [SHOW_MASTER]
+    snapshots = [m["data"] for m in (q.get_nowait() for _ in range(q.qsize())) if m["type"] == "session"]
+    assert snapshots and [c["url"] for c in snapshots[-1]["captured"]] == [SHOW_MASTER]
+    # a viewer still showing the video-only child casts the master
+    assert s.get_stream(video.id).url == SHOW_MASTER
+    await mgr.shutdown()
+
+
+async def test_audio_only_playlist_without_master_ranks_below_video():
+    prov = demux_site([
+        Resource(child("audio/hi/ita.m3u8"), HLS_CT),
+        # (another frame: next to a manifest, a progressive hit would count as one of its segments)
+        Resource("https://cdn.example.com/vod/movie.mp4", "video/mp4", frame_url="https://player.example.net/e"),
+        Resource(child("subs/ita.m3u8"), HLS_CT),
+    ])
+    mgr = demux_manager(prov)
+    s = await mgr.create(PAGE)
+    await settle()
+    model = s.to_model()
+    assert model.captured[0].url == "https://cdn.example.com/vod/movie.mp4"
+    assert [c.media_type for c in model.captured] == [None, "audio", "subtitles"]
+    await mgr.shutdown()
+
+
+async def test_unrelated_playlists_are_not_taken_for_children():
+    prov = demux_site([
+        Resource(SHOW_MASTER, HLS_CT, DEMUXED_MASTER),
+        Resource("https://cdn.example.com/other/video/720.m3u8?tok=B", HLS_CT),
+        Resource(SHOW + "video/720.m3u8?tok=B&lang=en", HLS_CT),  # stable param differs
+    ])
+    mgr = demux_manager(prov)
+    s = await mgr.create(PAGE)
+    await settle()
+    assert len(s.captured) == 3
+    await mgr.shutdown()
+
+
+# ---------------------------------------------------------------- clearing the list
+
+
+async def test_main_frame_navigation_clears_captured_but_hash_and_iframes_do_not():
+    prov = site()
+    mgr = manager(prov)
+    s = await mgr.create(PAGE)
+    await settle()
+    page = prov.contexts[0].pages[0]
+    n = len(s.captured)
+    assert n >= 2
+    q = s.subscribe()
+    q.get_nowait()
+    # hash-only change of the top-level page
+    page.main_frame.url = PAGE + "#chapter-2"
+    page.emit("framenavigated", page.main_frame)
+    # an iframe navigating somewhere else
+    page.emit("framenavigated", FakeFrame("https://ads.example.net/next", parent=page.main_frame, page=page))
+    await settle()
+    assert len(s.captured) == n
+    # SPA history navigation (pushState) to another path
+    page.main_frame.url = page.url = PAGE + "/episode-2?season=1"
+    page.emit("framenavigated", page.main_frame)
+    await settle()
+    assert s.captured == []
+    msgs = [q.get_nowait() for _ in range(q.qsize())]
+    assert any(m["type"] == "session" and m["data"]["captured"] == [] for m in msgs)
+    # streams of the new page are captured again (the seen-URL memory was reset too)
+    s._on_request(FakeRequest(M3U8, {}, FakeFrame(PAGE)), HLS_CT)
+    await settle()
+    assert [c.url for c in s.captured] == [M3U8]
+    # a full navigation to another page clears as well
+    await s.navigate("https://example.org/next")
+    assert s.captured == []
+    await mgr.shutdown()
+
+
+async def test_clear_captured_cancels_pending_thumbnails_and_broadcasts():
+    slow = asyncio.Event()
+
+    async def slow_probe(url, headers):
+        await slow.wait()
+        return HlsInfo(is_master=True, is_live=False, height=720, width=1280)
+
+    mgr = BrowserManager(site(), hls_probe=slow_probe)
+    s = await mgr.create(PAGE)
+    await settle()
+    assert s.captured and s._capture_tasks  # the master's probe is still pending
+    q = s.subscribe()
+    q.get_nowait()
+    s.clear_captured()
+    assert s.captured == [] and not s._capture_tasks
+    msg = q.get_nowait()
+    assert msg["type"] == "session" and msg["data"]["captured"] == []
+    slow.set()
+    await settle()
+    assert s.captured == []  # the cancelled probe never re-adds its stream
+    # anything fetched afterwards is listed again
+    s._on_request(FakeRequest("https://cdn.example.com/vod/movie.mp4", {}, FakeFrame(PAGE)), "video/mp4")
+    await settle()
+    assert [c.url for c in s.captured] == ["https://cdn.example.com/vod/movie.mp4"]
     await mgr.shutdown()

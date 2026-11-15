@@ -339,3 +339,29 @@ def ytdlp_info(url: str) -> dict[str, Any]:
         "http_headers": {"User-Agent": "yt-dlp-UA", "Accept": "*/*"},
         "subtitles": {"it": [{"ext": "json3", "url": "https://x/sub.json"}, {"ext": "vtt", "url": "https://x/it.vtt", "name": "Italiano"}]},
     }
+
+
+# Demuxed HLS (separate video variants + audio/subtitle renditions), two audio groups whose
+# DEFAULT languages disagree, query tokens on every URI (rotated by the CDN on each request)
+DEMUXED_MASTER = """#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="hi",LANGUAGE="ita",NAME="Italiano",DEFAULT=YES,AUTOSELECT=YES,URI="audio/hi/ita.m3u8?tok=A"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="hi",LANGUAGE="eng",NAME="English",DEFAULT=NO,AUTOSELECT=YES,URI="audio/hi/eng.m3u8?tok=A"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="lo",LANGUAGE="ita",NAME="Italiano",DEFAULT=NO,URI="audio/lo/ita.m3u8?tok=A"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="lo",LANGUAGE="eng",NAME="English",DEFAULT=YES,AUTOSELECT=YES,URI="audio/lo/eng.m3u8?tok=A"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",LANGUAGE="ita",NAME="Italiano",DEFAULT=NO,URI="subs/ita.m3u8?tok=A"
+#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="hi",SUBTITLES="subs"
+video/720.m3u8?tok=A
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=854x480,CODECS="avc1.64001e,mp4a.40.2",AUDIO="lo",SUBTITLES="subs"
+video/480.m3u8?tok=A
+"""
+
+# media playlist with extensionless segment names (container only known from the bytes)
+NOEXT_MEDIA = """#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:6.0,
+chunk?n=0
+#EXT-X-ENDLIST
+"""

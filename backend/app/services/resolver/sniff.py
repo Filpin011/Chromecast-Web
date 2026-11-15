@@ -178,6 +178,7 @@ def score(
     height: int | None = None,
     content_length: int | None = None,
     is_live: bool | None = None,
+    media_type: str | None = None,
 ) -> float:
     s = {"hls": 50.0, "dash": 45.0, "progressive": 30.0}.get(kind or "", 5.0)
     if is_master:
@@ -192,4 +193,8 @@ def score(
         s -= 30
     if content_length is not None and kind == "progressive" and content_length < 1_000_000:
         s -= 20  # short clips / teasers
+    if media_type == "audio":
+        s -= 40  # an HLS audio-only rendition: below any video
+    elif media_type == "subtitles":
+        s -= 48
     return round(s, 2)

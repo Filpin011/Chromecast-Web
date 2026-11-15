@@ -171,3 +171,19 @@ describe("ad blocking / popups in the browser view", () => {
     expect(nextPopup(s.session)?.id).toBe("p2");
   });
 });
+
+describe("clearing and demuxed renditions", () => {
+  it("an empty session snapshot (list cleared, page changed) drops every stream", () => {
+    let s = browserViewReducer(initialBrowserView, { type: "init", session: { ...session, captured: [makeCaptured({ id: "a" })] } });
+    s = browserViewReducer(s, { type: "captured", data: makeCaptured({ id: "b" }) });
+    s = browserViewReducer(s, { type: "session", data: { ...session, captured: [] } });
+    expect(s.captured).toEqual([]);
+  });
+
+  it("never ranks an audio/subtitles-only rendition first, whatever its score", () => {
+    const audio = makeCaptured({ id: "audio", media_type: "audio", score: 99, height: null });
+    const subs = makeCaptured({ id: "subs", media_type: "subtitles", score: 98, height: null });
+    const video = makeCaptured({ id: "video", kind: "progressive", score: 1 });
+    expect(rankCaptured([audio, subs, video]).map((c) => c.id)).toEqual(["video", "audio", "subs"]);
+  });
+});

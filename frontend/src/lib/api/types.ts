@@ -37,11 +37,12 @@ export interface ResolvedMedia {
   original_input: string;
   proxied: boolean;
   subtitles: Subtitle[];
-  /** HLS segment container sent to the receiver as hlsSegmentFormat; null for TS / non-HLS. */
+  /** HLS segment container sent to the receiver as hlsSegmentFormat (the audio's when it is a separate
+   *  rendition); null for muxed TS / non-HLS. */
   hls_segment_format: HlsSegmentFormat | null;
 }
 
-export type HlsSegmentFormat = "fmp4" | "aac" | "mp3" | "ac3" | "e_ac3";
+export type HlsSegmentFormat = "fmp4" | "ts" | "aac" | "mp3" | "ac3" | "e_ac3";
 
 export interface Channel {
   id: string;
@@ -263,6 +264,9 @@ export interface CapturedStream {
   score?: number;
   /** Same-origin `/proxy` path replaying the captured headers, playable by the in-app preview. */
   preview_url?: string | null;
+  /** HLS media playlist without video (audio / subtitles rendition, no master seen): listed last, never
+   *  picked as the best stream. Child playlists of a known master are never listed at all. */
+  media_type?: "audio" | "subtitles" | null;
 }
 
 export interface Viewport {

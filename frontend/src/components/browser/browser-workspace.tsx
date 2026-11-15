@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Home,
   Keyboard,
+  ListX,
   Menu,
   Monitor,
   MoreHorizontal,
@@ -42,7 +43,7 @@ import {
   viewportMode,
   type ViewportMode,
 } from "@/lib/browser-session";
-import { rankCaptured } from "@/lib/captured";
+import { isMediaOnly, rankCaptured } from "@/lib/captured";
 import { capturedMedia } from "@/lib/local-player/sources";
 import { useT } from "@/i18n";
 import { haptic } from "@/lib/haptics";
@@ -129,6 +130,8 @@ export function BrowserWorkspace({
   const [preview, setPreview] = useState<CapturedStream | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dismissedTop, setDismissedTop] = useState<string | null>(null);
+  // opened by hand (the "N video" pill): also shows a list holding only audio/subtitle renditions
+  const [panelForced, setPanelForced] = useState(false);
   const [snapshots, setSnapshots] = useState<Record<string, string>>({});
   const actions = useStreamActions(session.id, session.title);
   const watch = (s: CapturedStream) => {
@@ -145,7 +148,9 @@ export function BrowserWorkspace({
 
   const ranked = useMemo(() => rankCaptured(state.captured), [state.captured]);
   const top = ranked[0] ?? null;
-  const panelOpen = !!top && top.id !== dismissedTop;
+  // the panel pops up by itself for a video stream only, never for an audio/subtitles-only rendition
+  const autoTop = top && !isMediaOnly(top) ? top : null;
+  const panelOpen = !!top && (panelForced || (!!autoTop && autoTop.id !== dismissedTop));
   // the keyboard bar overlays the bottom of the page; the big stream panel steps aside meanwhile
   // (the "N video" pill stays reachable above the bar)
   const panelVisible = panelOpen && !keyboard;
@@ -235,6 +240,21 @@ export function BrowserWorkspace({
     if (decision === "block_always") toast.success(t("popup.blockedForever"));
   };
 
+  const clearCaptured = async () => {
+    haptic(8);
+    try {
+      dispatch({ type: "session", data: await api.browser.clearCaptured(session.id) });
+      setPanelForced(false);
+      setDismissedTop(null); // the next stream found pops the panel up again
+      setSelectedId(null);
+      setSnapshots({});
+      snapped.current.clear();
+      setListOpen(false);
+    } catch (e) {
+      toast.error(errorMessage(e, t("captured.clearFailed")));
+    }
+  };
+
   const stopMedia = () => {
     haptic(6);
     send({ type: "stop_media" });
@@ -311,7 +331,11 @@ export function BrowserWorkspace({
                   onSelect={setSelectedId}
                   snapshots={snapshots}
                   pageTitle={session.title}
-                  onDismiss={() => setDismissedTop(top?.id ?? null)}
+                  onDismiss={() => {
+                    setPanelForced(false);
+                    setDismissedTop(autoTop?.id ?? null);
+                  }}
+                  onClear={clearCaptured}
                   onCast={actions.cast}
                   onQueue={actions.queue}
                   onPlay={setPreview}
@@ -327,7 +351,7 @@ export function BrowserWorkspace({
               type="button"
               onClick={() => {
                 setKeyboard(false);
-                setDismissedTop(null);
+                setPanelForced(true);
               }}
               className={cn(
                 "absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg md:hidden",
@@ -344,7 +368,19 @@ export function BrowserWorkspace({
         <aside className="hidden w-80 shrink-0 flex-col border-l bg-background md:flex lg:w-96">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <h2 className="text-sm font-semibold">{t("browser.detectedStreams")}</h2>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums">{ranked.length}</span>
+            <div className="flex items-center gap-1">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums">{ranked.length}</span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("captured.clear")}
+                title={t("captured.clear")}
+                disabled={!ranked.length}
+                onClick={clearCaptured}
+              >
+                <ListX className="size-4" />
+              </Button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             <CapturedList
@@ -418,7 +454,14 @@ export function BrowserWorkspace({
 
       <Drawer open={listOpen} onOpenChange={setListOpen} showSwipeHandle>
         <DrawerContent>
-          <DrawerTitle className="px-4 pt-3 pb-2">{t("browser.detectedStreams")}</DrawerTitle>
+          <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+            <DrawerTitle>{t("browser.detectedStreams")}</DrawerTitle>
+            {ranked.length > 0 && (
+              <Button variant="ghost" size="icon" aria-label={t("captured.clear")} title={t("captured.clear")} onClick={clearCaptured}>
+                <ListX className="size-5" />
+              </Button>
+            )}
+          </div>
           <div className="overflow-y-auto px-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
             <CapturedList
               streams={ranked}

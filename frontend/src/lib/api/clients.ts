@@ -182,6 +182,10 @@ export class BrowserApi extends Resource {
   close(id: string) {
     return this.http.delete(`/api/browser/sessions/${enc(id)}`);
   }
+  /** Empty the session's captured-streams list (the updated session comes back). */
+  clearCaptured(id: string) {
+    return this.http.delete<BrowserSession>(`/api/browser/sessions/${enc(id)}/captured`);
+  }
   cast(id: string, req: BrowserCastRequest) {
     return this.http.post<PlayerState>(`/api/browser/sessions/${enc(id)}/cast`, req);
   }

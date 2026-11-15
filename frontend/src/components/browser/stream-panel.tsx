@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, MonitorPlay, Play, X } from "lucide-react";
+import { Bookmark, Cast, ListPlus, ListX, MonitorPlay, Play, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ export interface StreamPanelProps {
   snapshots: Record<string, string>;
   pageTitle: string | null;
   onDismiss: () => void;
+  /** Empty the captured list (also dismisses the panel). */
+  onClear?: () => void;
   onCast: (s: CapturedStream) => void;
   onQueue: (s: CapturedStream) => void;
   onPlay: (s: CapturedStream) => void;
@@ -66,6 +68,7 @@ export function StreamPanel({
   snapshots,
   pageTitle,
   onDismiss,
+  onClear,
   onCast,
   onQueue,
   onPlay,
@@ -96,9 +99,16 @@ export function StreamPanel({
           </h3>
           <StreamBadges stream={stream} />
         </div>
-        <Button variant="ghost" size="icon" aria-label={t("panel.close")} onClick={onDismiss} className="-mt-1 -mr-1">
-          <X className="size-5" />
-        </Button>
+        <div className="-mt-1 -mr-1 flex shrink-0 flex-col items-center">
+          <Button variant="ghost" size="icon" aria-label={t("panel.close")} onClick={onDismiss}>
+            <X className="size-5" />
+          </Button>
+          {onClear && (
+            <Button variant="ghost" size="icon" aria-label={t("captured.clear")} title={t("captured.clear")} onClick={onClear}>
+              <ListX className="size-5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {streams.length > 1 && (

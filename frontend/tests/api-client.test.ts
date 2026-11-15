@@ -82,12 +82,14 @@ describe("HttpClient", () => {
     await api.browser.navigate("s1", { action: "back" });
     await api.browser.cast("s1", { stream_id: "x", device_id: "d", enqueue: true });
     await api.browser.favorite("s1", "x");
+    await api.browser.clearCaptured("s1");
     const calls = fetch.mock.calls.map(([u, i]) => [i.method, u, i.body && JSON.parse(i.body)]);
     expect(calls).toEqual([
       ["POST", "/api/browser/sessions", { url: "https://a.b", viewport: { width: 390, height: 844 } }],
       ["POST", "/api/browser/sessions/s1/navigate", { action: "back" }],
       ["POST", "/api/browser/sessions/s1/cast", { stream_id: "x", device_id: "d", enqueue: true }],
       ["POST", "/api/browser/sessions/s1/favorite", { stream_id: "x" }],
+      ["DELETE", "/api/browser/sessions/s1/captured", undefined],
     ]);
   });
 

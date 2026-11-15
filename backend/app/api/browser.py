@@ -53,6 +53,13 @@ async def delete_session(session_id: str, s: Services = Depends(services)) -> Re
     return Response(status_code=204)
 
 
+@router.delete("/api/browser/sessions/{session_id}/captured", response_model=m.BrowserSession)
+async def clear_captured(session_id: str, s: Services = Depends(services)) -> m.BrowserSession:
+    session = s.browser.get(session_id)
+    session.clear_captured()
+    return session.to_model()
+
+
 async def _captured_media(s: Services, session: RemoteBrowserSession, stream_id: str) -> m.ResolvedMedia:
     stream = session.get_stream(stream_id)
     live = stream.is_live

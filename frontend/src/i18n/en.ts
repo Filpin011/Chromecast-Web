@@ -224,6 +224,10 @@ export const en = {
   "captured.queueName": "Add to queue {name}",
   "captured.favoriteName": "Add to favorites {name}",
   "captured.fallbackTitle": "Detected stream",
+  "captured.clear": "Clear list",
+  "captured.clearFailed": "Couldn’t clear the list",
+  "captured.audioOnly": "Audio only",
+  "captured.subtitlesOnly": "Subtitles only",
   // keyboard
   "keyboard.backspace": "Delete character",
   "keyboard.textLabel": "Text to send to the page",

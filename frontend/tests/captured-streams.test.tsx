@@ -125,3 +125,19 @@ describe("KeyboardBar", () => {
     ]);
   });
 });
+
+describe("Clear list and audio-only renditions", () => {
+  it("the panel's clear button calls onClear", () => {
+    const onClear = vi.fn();
+    renderPanel({ onClear });
+    fireEvent.click(screen.getByRole("button", { name: "Clear list" }));
+    expect(onClear).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("labels audio-only renditions", () => {
+    render(<CapturedList streams={[makeCaptured({ id: "a", media_type: "audio", height: null, quality: null })]} onPreview={vi.fn()} onCast={vi.fn()} />);
+    expect(screen.getByTestId("media-only-badge")).toHaveTextContent("Audio only");
+    cleanup();
+  });
+});

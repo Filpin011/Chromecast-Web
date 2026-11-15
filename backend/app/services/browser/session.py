@@ -19,7 +19,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urldefrag, urlsplit
 
 from app.errors import AppError
 from app.models import BrowserSession, CapturedStream, PopupRequest, Settings, Viewport, utcnow
@@ -149,6 +149,12 @@ class RemoteBrowserSession:
         self._seen_urls: set[str] = set()  # sniff.stream_key() of every URL already handled
         self._manifest_frames: set[str] = set()  # frames that loaded an HLS/DASH manifest
         self._manifest_hosts: set[str] = set()  # hosts that served an HLS/DASH manifest
+        # sniff.stream_key() of every child playlist (variant / audio / subtitles) of a probed
+        # HLS master: never listed on their own, the master plays them all
+        self._child_keys: set[str] = set()
+        self._child_to_master: dict[str, str] = {}  # dropped child stream id -> master id
+        self._capture_tasks: set[asyncio.Task[Any]] = set()  # capture + probe + thumbnail
+        self._page_key: str | None = None  # main-frame URL without #fragment
         # ad blocking / popups
         self.filters = filters
         self._settings = settings or Settings
@@ -179,16 +185,41 @@ class RemoteBrowserSession:
         )
 
     def get_stream(self, stream_id: str) -> CapturedStream:
+        # a child playlist a viewer still lists (dropped once its master was probed) casts the master
+        stream_id = self._child_to_master.get(stream_id, stream_id)
         for c in self.captured:
             if c.id == stream_id:
                 return c
         raise AppError(404, "Captured stream not found", "stream_not_found")
 
+    def clear_captured(self) -> None:
+        """Manual "Clear list": empty ``captured`` and forget what was seen, so streams
+        fetched from now on are listed again (child playlists of known masters stay hidden)."""
+        self.touch()
+        self._reset_captured(forget_children=False)
+        self._broadcast_session()
+
+    def _reset_captured(self, *, forget_children: bool) -> None:
+        for task in list(self._capture_tasks):  # pending probes / thumbnails of the old list
+            task.cancel()
+        self._capture_tasks.clear()
+        self.captured = []
+        self._seen_urls.clear()
+        self._child_to_master.clear()
+        if forget_children:
+            self._child_keys.clear()
+
     # ------------------------------------------------------------ lifecycle
-    def _spawn(self, coro: Awaitable[Any]) -> None:
+    def _spawn(self, coro: Awaitable[Any]) -> asyncio.Task[Any]:
         task = asyncio.ensure_future(coro)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+        return task
+
+    def _spawn_capture(self, coro: Awaitable[Any]) -> None:
+        task = self._spawn(coro)
+        self._capture_tasks.add(task)
+        task.add_done_callback(self._capture_tasks.discard)
 
     async def start(self, url: str) -> None:
         self.context.on("request", lambda req: self._on_request(req, None))
@@ -407,8 +438,26 @@ class RemoteBrowserSession:
     def _on_framenavigated(self, frame: Any) -> None:
         with contextlib.suppress(Exception):
             if frame is not getattr(self.page, "main_frame", frame):
-                return
+                return  # iframe navigations never clear the list
+        url = ""
+        with contextlib.suppress(Exception):
+            url = frame.url or ""
+        self._main_frame_navigated(url)
         self._spawn(self._refresh_meta())
+
+    def _main_frame_navigated(self, url: str) -> None:
+        """The top-level page changed (document load or SPA history navigation): the streams
+        captured on the previous page are cleared. Hash-only changes keep them."""
+        if not url.startswith(("http://", "https://")):
+            return  # about:blank, chrome-error://, ...
+        key = urldefrag(url)[0]
+        prev, self._page_key = self._page_key, key
+        if prev is None or prev == key:
+            return
+        had = bool(self.captured)
+        self._reset_captured(forget_children=True)
+        if had:
+            self._broadcast_session()
 
     # ------------------------------------------------------------ ad blocking
     @property
@@ -534,9 +583,6 @@ class RemoteBrowserSession:
         if self.closed or not isinstance(url, str) or not url.startswith(("http://", "https://")):
             return
         opener = self.url
-        if sniff.classify(url):  # a popup pointing straight at media: capture it, never open it
-            with contextlib.suppress(Exception):
-                self._spawn(self._capture_url(url, opener))
         verdict = self._popup_verdict(url, opener)
         if verdict == "block":
             log.info("popup blocked: %s", url)
@@ -547,10 +593,15 @@ class RemoteBrowserSession:
             await self._switch_to(page, goto=url)
         else:
             self._add_pending(url, opener, "popup")
+        if sniff.classify(url):
+            # a popup pointing straight at media: captured once the policy ran, so an allowed one
+            # (the view switches to it: a top-level navigation, which clears the list) stays listed
+            with contextlib.suppress(Exception):
+                self._spawn_capture(self._capture_url(url, opener))
 
     async def _capture_url(self, url: str, page_url: str) -> None:
         key = sniff.stream_key(url)
-        if key in self._seen_urls:
+        if key in self._seen_urls or key in self._child_keys:
             return
         kind = sniff.classify(url)
         if not kind:
@@ -709,7 +760,7 @@ class RemoteBrowserSession:
         if not kind or sniff.is_segment(url, content_type):
             return
         key = sniff.stream_key(url)  # LL-HLS reloads / token refreshes are the same stream
-        if key in self._seen_urls:
+        if key in self._seen_urls or key in self._child_keys:
             return
         frame_url = ""
         with contextlib.suppress(Exception):
@@ -728,10 +779,12 @@ class RemoteBrowserSession:
             # (worker / service worker / sibling frame), often disguised (``/1794557807184.json``)
             return
         self._seen_urls.add(key)
-        self._spawn(self._capture(request, url, kind, content_type))
+        self._spawn_capture(self._capture(request, url, kind, content_type))
 
     async def _capture(self, request: Any, url: str, kind: str, content_type: str | None) -> None:
         headers = await request_headers(request, self.context)
+        if sniff.stream_key(url) in self._child_keys:
+            return  # its master was probed meanwhile
         frame_url = None
         with contextlib.suppress(Exception):
             frame_url = request.frame.url
@@ -775,18 +828,43 @@ class RemoteBrowserSession:
                 stream.is_live = info.is_live
                 if info.height:
                     stream.width, stream.height = info.width, info.height
+                media_type = getattr(info, "media_type", None)
+                if not info.is_master and media_type in ("audio", "subtitles"):
+                    stream.media_type = media_type
+                if info.is_master:
+                    self._adopt_children(stream, getattr(info, "child_urls", None) or [])
+            if stream not in self.captured:
+                return  # dropped meanwhile (child of a master, list cleared)
         thumb, vw, vh = await self._thumbnail()
         if thumb:
             stream.thumbnail = thumb
-        if not stream.height and vh:
+        if not stream.height and vh and not stream.media_type:
+            # the <video> size describes the picture: not an audio/subtitles rendition's
             stream.width, stream.height = vw, vh
         stream.quality = quality_label(stream.height) if stream.height else None
         stream.score = sniff.score(
-            stream.url, stream.kind, stream.is_master, stream.height, None, stream.is_live
+            stream.url, stream.kind, stream.is_master, stream.height, None, stream.is_live, stream.media_type
         )
         if stream in self.captured:
             self._broadcast({"type": "captured", "data": stream.model_dump(mode="json")})
             self._broadcast_session()
+
+    def _adopt_children(self, master: CapturedStream, child_urls: list[str]) -> None:
+        """Hide the child playlists of ``master``: the ones already listed are dropped (viewers
+        learn it from the session snapshot), later ones are ignored by the sniffer. URLs match
+        on ``sniff.stream_key`` (rotating tokens / cache busters ignored)."""
+        keys = {sniff.stream_key(u) for u in child_urls} - {sniff.stream_key(master.url)}
+        if not keys:
+            return
+        self._child_keys |= keys
+        dropped = [c for c in self.captured if c is not master and sniff.stream_key(c.url) in keys]
+        if not dropped:
+            return
+        for c in dropped:
+            self._child_to_master[c.id] = master.id
+        gone = {c.id for c in dropped}
+        self.captured = [c for c in self.captured if c.id not in gone]
+        self._broadcast_session()
 
     async def _thumbnail(self) -> tuple[str | None, int | None, int | None]:
         self._capturing += 1

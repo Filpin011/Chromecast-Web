@@ -35,6 +35,7 @@ import { BrowserWorkspace, type BrowserWorkspaceProps } from "@/components/brows
 import { api } from "@/lib/api";
 import type { BrowserSession } from "@/lib/api/types";
 import { useUiStore } from "@/stores/ui-store";
+import { makeCaptured } from "./fixtures";
 import { renderWithProviders } from "./render";
 
 const session: BrowserSession = {
@@ -170,5 +171,30 @@ describe("BrowserWorkspace controls", () => {
     expect(pill.querySelector(".truncate")).toHaveTextContent("Fit to screen");
     fireEvent.click(pill);
     expect(props.onReopen).toHaveBeenCalledWith("mobile", session.url);
+  });
+});
+
+describe("BrowserWorkspace captured list", () => {
+  const streams = [
+    makeCaptured({ id: "hd", height: 1080, score: 20, title: "Finale" }),
+    makeCaptured({ id: "sd", kind: "progressive", height: 480, score: 1 }),
+  ];
+
+  it("'Clear list' empties the streams through the API and dismisses the panel", async () => {
+    const clear = vi.spyOn(api.browser, "clearCaptured").mockResolvedValue({ ...session, captured: [] });
+    setup({ session: { ...session, captured: streams } });
+    expect(screen.getByRole("region", { name: "Video detected" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Clear list" }).length).toBeGreaterThanOrEqual(2); // panel + side list
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear list" })[0]);
+    await waitFor(() => expect(clear).toHaveBeenCalledWith("b1"));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Video detected" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("list", { name: "Captured streams" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 video/i)).not.toBeInTheDocument();
+  });
+
+  it("does not pop the panel up for an audio-only rendition", () => {
+    setup({ session: { ...session, captured: [makeCaptured({ id: "a", media_type: "audio", height: null })] } });
+    expect(screen.queryByRole("region", { name: "Video detected" })).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Captured streams" })).toBeInTheDocument();
   });
 });

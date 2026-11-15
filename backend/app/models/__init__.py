@@ -11,8 +11,9 @@ SourceKind = Literal["direct", "webpage", "m3u", "ytdlp", "local"]
 StreamType = Literal["LIVE", "BUFFERED"]
 PlayerStateName = Literal["IDLE", "PLAYING", "PAUSED", "BUFFERING", "UNKNOWN"]
 StreamKind = Literal["hls", "dash", "progressive", "unknown"]
-# Cast hlsSegmentFormat (None = MPEG-TS, the receiver default)
-HlsSegmentFormat = Literal["fmp4", "aac", "mp3", "ac3", "e_ac3"]
+# Cast hlsSegmentFormat (None = muxed MPEG-TS, the receiver default; "ts" names a separate
+# MPEG-TS audio rendition, which must be explicit next to fMP4 video)
+HlsSegmentFormat = Literal["fmp4", "ts", "aac", "mp3", "ac3", "e_ac3"]
 ControlAction = Literal[
     "play",
     "pause",
@@ -314,6 +315,8 @@ class CapturedStream(Model):
     is_live: bool | None = None
     score: float = 0.0
     preview_url: str | None = None  # same-origin proxy path for the in-app preview
+    # HLS media playlist without video (no master seen for it): ranked last, never the default
+    media_type: Literal["audio", "subtitles"] | None = None
 
 
 class PopupRequest(Model):

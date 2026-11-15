@@ -11,12 +11,17 @@ export function upsertCaptured(list: CapturedStream[], s: CapturedStream): Captu
 
 const KIND_WEIGHT: Record<CapturedKind, number> = { hls: 3, dash: 2, progressive: 1, unknown: 0 };
 
-/** Best candidates first: backend score, then resolution, HLS master, kind, most recent. */
+/** Audio-only / subtitles-only renditions: never the best stream. */
+export const isMediaOnly = (s: Pick<CapturedStream, "media_type">) => !!s.media_type;
+
+/** Best candidates first: video before audio/subtitle-only renditions, then backend score, resolution,
+ *  HLS master, kind, most recent. */
 export function rankCaptured(list: CapturedStream[]): CapturedStream[] {
   return list
     .map((s, idx) => ({ s, idx }))
     .sort((a, b) => {
       const d =
+        Number(isMediaOnly(a.s)) - Number(isMediaOnly(b.s)) ||
         (b.s.score ?? 0) - (a.s.score ?? 0) ||
         (b.s.height ?? 0) - (a.s.height ?? 0) ||
         Number(b.s.is_master === true) - Number(a.s.is_master === true) ||

@@ -220,6 +220,10 @@ export const it: Messages = {
   "captured.queueName": "Aggiungi alla coda {name}",
   "captured.favoriteName": "Aggiungi ai preferiti {name}",
   "captured.fallbackTitle": "Stream rilevato",
+  "captured.clear": "Svuota elenco",
+  "captured.clearFailed": "Impossibile svuotare l’elenco",
+  "captured.audioOnly": "Solo audio",
+  "captured.subtitlesOnly": "Solo sottotitoli",
   // keyboard
   "keyboard.backspace": "Cancella carattere",
   "keyboard.textLabel": "Testo da inviare alla pagina",

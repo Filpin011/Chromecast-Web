@@ -117,3 +117,18 @@ def test_browser_queue_on_disconnected_device_starts_playback(client):
                     json={"stream_id": stream_id, "device_id": "fake-ultra-0001", "enqueue": True}).json()
     assert p["connected"] and p["queue"] == [] and p["media_url"].startswith("http://cast.test:8000/proxy/")
     assert "fake-ultra-0001" in client.get("/api/state").json()["players"]
+
+
+def test_clear_captured_endpoint(client):
+    sid, sess = create(client)
+    assert sess["captured"]
+    r = client.delete(f"/api/browser/sessions/{sid}/captured")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == sid and body["captured"] == []
+    assert client.get(f"/api/browser/sessions/{sid}").json()["captured"] == []
+    # the stream ids are gone: casting one now is a clean 404
+    stale = sess["captured"][0]["id"]
+    r = client.post(f"/api/browser/sessions/{sid}/cast", json={"stream_id": stale, "device_id": "fake-ultra-0001"})
+    assert r.status_code == 404 and r.json()["code"] == "stream_not_found"
+    assert client.delete("/api/browser/sessions/nope/captured").json()["code"] == "session_not_found"
