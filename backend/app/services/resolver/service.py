@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
@@ -28,7 +28,7 @@ from app.models import (
     Subtitle,
 )
 from app.services.browser.launcher import DESKTOP_UA, BrowserProvider
-from app.services.proxy import dash, hls
+from app.services.proxy import aes, dash, hls
 from app.services.proxy.restream import RestreamManager
 from app.services.proxy.tokens import TokenRegistry, clean_headers
 from app.services.resolver import local as localres
@@ -92,6 +92,11 @@ class HlsInfo:
     # The master mixes video codec families (YouTube: avc1/TS + vp09/fMP4): only the
     # proxy can serve the receiver a master limited to the probed variant's family.
     mixed_variants: bool = False
+    # master only: every child playlist it references (variants, EXT-X-MEDIA renditions,
+    # I-frame playlists), resolved against the master's final URL
+    child_urls: list[str] = field(default_factory=list)
+    # media playlist only: "audio" / "subtitles" when it carries no video (None: video/unknown)
+    media_type: str | None = None
 
 
 @dataclass
@@ -201,8 +206,10 @@ class Resolver:
         force_proxy: Callable[[], bool] = lambda: False,
         filters: Any = None,
         adblock_enabled: Callable[[str], bool] = lambda _url: True,
+        audio_language: str | None = None,
     ) -> None:
         self.client = client
+        self.audio_language = audio_language or None  # preferred HLS audio rendition language
         self.tokens = tokens
         self.restream = restream
         self.media_root = media_root
@@ -326,9 +333,11 @@ class Resolver:
             media_text, media_base = text, final
             audio_url: str | None = None
             if info.is_master:
+                info.child_urls = hls.child_playlist_urls(text, final)
+                # what the proxy serves the receiver: one codec family, one audio language
                 filtered = hls.filter_variants(text)
                 info.mixed_variants = filtered != text
-                text = filtered  # what the proxy serves the receiver
+                text = hls.harmonize_audio_defaults(filtered, self.audio_language)
                 res = hls.best_resolution(text)
                 if res:
                     info.width, info.height = res
@@ -343,14 +352,19 @@ class Resolver:
                 info.is_live = hls.is_live_media_playlist(text)
             fmt, seg_cors = await self._media_playlist_format(media_text, media_base, hdrs, state)
             cors = cors and seg_cors
-            info.segment_format = fmt
+            if not info.is_master:
+                info.media_type = hls.media_playlist_kind(text) or ("audio" if fmt in hls.AUDIO_FORMATS else None)
+            # muxed MPEG-TS is the receiver's default: only other containers are announced
+            info.segment_format = None if fmt == "ts" else fmt
             info.video_segment_format = "fmp4" if fmt == "fmp4" else None
             if audio_url:
+                # hlsSegmentFormat describes the AUDIO segments when the audio is a separate
+                # rendition: an MPEG-TS audio rendition next to fMP4 video must say "ts"
                 aresp = await self._probe_get(audio_url, hdrs, state)
                 cors = cors and state.allows(aresp.headers)
                 afmt, seg_cors = await self._media_playlist_format(aresp.text, str(aresp.url), hdrs, state)
                 cors = cors and seg_cors
-                if afmt in ("fmp4", "aac", "mp3", "ac3", "e_ac3"):
+                if afmt in ("fmp4", "ts", *hls.AUDIO_FORMATS):
                     info.segment_format = afmt  # the audio rendition's own container
             info.cors = cors
         except Exception as exc:  # network errors are not fatal here
@@ -368,16 +382,42 @@ class Resolver:
     async def _media_playlist_format(
         self, text: str, base: str, headers: dict[str, str], state: _ProbeState | None = None
     ) -> tuple[str | None, bool]:
-        """(Cast hlsSegmentFormat, first segment answers the receiver's Origin) of a media playlist."""
+        """(segment container, first segment answers the receiver's Origin) of a media playlist.
+
+        The container is "ts", "fmp4", "aac", "mp3", "ac3", "e_ac3" or None (unknown). It is
+        sniffed from the first segment's bytes (decrypted first for ``METHOD=AES-128``, whose
+        whole segments are ciphertext), falling back to the segment/init names.
+        """
         fmt = hls.segment_format(text)
         segment = hls.first_segment_url(text, base)
+        if fmt is None and segment and hls.uri_ext(segment) == ".ts":
+            fmt = "ts"
         if not segment:
             return fmt, True
         allowed, head = await self._segment_head(segment, headers, state)
-        sniffed = hls.sniff_segment(head)
+        key = hls.first_segment_key(text)
+        if key is not None and key[0] == "AES-128":
+            head = await self._decrypt_head(head, urljoin(base, key[1]), key[2], headers)
+        elif key is not None and key[0] != "SAMPLE-AES":  # SAMPLE-AES keeps the container clear
+            head = b""
+        sniffed = hls.sniff_segment(head) if head else None
         if sniffed is not None:
-            fmt = None if sniffed == "ts" else sniffed
+            fmt = sniffed
         return fmt, allowed
+
+    async def _decrypt_head(self, head: bytes, key_url: str, iv: bytes, headers: dict[str, str]) -> bytes:
+        """First bytes of an AES-128 segment in clear (b"" when the key can't be fetched)."""
+        if not head or not key_url.startswith(("http://", "https://")):
+            return b""
+        try:
+            resp = await self._get(key_url, headers)
+            key = resp.content
+            if len(key) != 16:
+                return b""
+            return aes.cbc_decrypt_prefix(head, key, iv)
+        except Exception as exc:
+            log.debug("hls probe: AES-128 key %s unavailable: %s", key_url, exc)
+            return b""
 
     async def dash_info(self, url: str, headers: dict[str, str] | None = None) -> DashInfo:
         """Best effort: live (dynamic MPD) and CORS on the manifest, as the receiver sees it."""

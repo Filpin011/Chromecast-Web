@@ -65,6 +65,7 @@ docker-compose.yml  for Coolify (network_mode: host, volume for /data)
 | `FRONTEND_DIR` | `../frontend/out` | static export to serve at `/` |
 | `ENABLE_PLAYWRIGHT` | `true` | web-page extraction |
 | `FILTERS_AUTO_UPDATE` | `true` | download/refresh the uBO default filter lists every 24h (bundled fallback list is always loaded) |
+| `AUDIO_LANGUAGE` | unset | preferred HLS audio language (`it`/`ita`/`it-IT` match each other): made the DEFAULT rendition of every audio group in masters probed and served by `/proxy`; unset = the master's own default (of the first variant's group) |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / ffprobe next to it | used by `/restream` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | comma-separated extra origins (dev only; prod is same-origin) |
 | `CORS_ORIGIN_REGEX` | private-LAN hosts (localhost, 10/8, 172.16/12, 192.168/16, `*.local`), any port | so `make dev` works from a phone at `http://<lan-ip>:3000`; set `""` to disable |
@@ -103,12 +104,17 @@ interface ResolvedMedia {
   proxied: boolean;
   subtitles: Subtitle[];
   // HLS only, from the first segment's bytes (fallback: #EXT-X-MAP / segment extensions) of the first
-  // variant, or of its audio rendition when that is packed audio (YouTube: ID3+ADTS named .ts); null = MPEG-TS.
+  // variant, or of its separate audio rendition when there is one (the DEFAULT=YES one of the first variant's
+  // group): hlsSegmentFormat describes the AUDIO segments, so a packed-audio rendition (YouTube: ID3+ADTS named
+  // .ts) gives "aac"/"ac3"/…, an audio-only MPEG-TS rendition gives "ts" (explicit, also next to fMP4 video) and
+  // fMP4 audio "fmp4". null = muxed MPEG-TS (the receiver default) or unknown. `METHOD=AES-128` segments are
+  // decrypted (key fetched with the stream headers, IV from the tag or the media sequence) before sniffing;
+  // other encrypted methods fall back to the names, SAMPLE-AES is sniffed as is (container in clear).
   // Sent in the LOAD as hlsSegmentFormat (+ hlsVideoSegmentFormat "fmp4"): the Default Media
   // Receiver assumes TS otherwise and fMP4/CMAF or packed-audio HLS fails to play. One value covers every
   // variant, so a master mixing video codec families (YouTube: avc1/TS + vp09/fMP4) is always proxied and the
   // proxy serves it with only the variants of the first variant's family (see /proxy).
-  hls_segment_format: "fmp4" | "aac" | "mp3" | "ac3" | "e_ac3" | null;
+  hls_segment_format: "fmp4" | "ts" | "aac" | "mp3" | "ac3" | "e_ac3" | null;
   // HLS only: "fmp4" when the (first variant's) video segments are fMP4, also when hls_segment_format names the
   // container of a separate audio rendition (fMP4 video + packed AAC audio); sent as hlsVideoSegmentFormat.
   // null = MPEG-TS video.
@@ -331,6 +337,12 @@ Backend behaviour notes (implemented in `backend/`):
   A master whose variants mix video codec families (by `CODECS`: avc1/avc3, hvc1/hev1, vp09, av01…) keeps only
   the variants (and I-frame playlists) of the first variant's family, plus audio-only/codec-less ones: the LOAD's
   `hlsSegmentFormat` is probed on the first variant and the receiver must not switch to another container.
+  **Audio renditions**: in a master with several `#EXT-X-MEDIA:TYPE=AUDIO` renditions per group, every group's
+  DEFAULT is set to the same language (`AUDIO_LANGUAGE` when offered, else the first variant group's default),
+  `AUTOSELECT=YES` on it and `DEFAULT=NO` on the others: the receiver otherwise takes each group's own default when
+  it switches variant (ABR, retry) and changes language on its own. The LOAD cannot name the track instead: HLS
+  renditions only become receiver tracks (with receiver-assigned ids) once the master is parsed, so
+  `activeTrackIds` is never sent for them (the player's track picker can switch afterwards).
   **DASH** manifests (by content-type/`.mpd` or a `<MPD` body) are rewritten too, into *clear* proxy paths
   `/proxy/{token}/a/{scheme}/{host}/{path}[?query]` so segment templates (`$Number%05d$`) and relative/`../`
   paths keep working inside the token: MPD-level `<BaseURL>`s are made absolute (one pointing at the manifest is
@@ -421,7 +433,21 @@ REST:
 | GET | `/api/browser/sessions/{id}` | | `BrowserSession` |
 | POST | `/api/browser/sessions/{id}/navigate` | `{url}` or `{action: "back"\|"forward"\|"reload"}` | `BrowserSession` |
 | DELETE | `/api/browser/sessions/{id}` | | 204 |
+| DELETE | `/api/browser/sessions/{id}/captured` | | `BrowserSession` (empty `captured`; viewers get a `session` snapshot) |
 | POST | `/api/browser/sessions/{id}/cast` | `{stream_id, device_id}` | `PlayerState` (cast via proxy with captured headers; recorded in history) |
+
+**Captured list lifecycle.** HLS masters are probed (`Resolver.hls_info`): every child playlist a master
+references (variant URIs, `URI=` of `#EXT-X-MEDIA` audio/subtitles and I-frame renditions, resolved against
+the master) is never listed on its own — children captured earlier are dropped from `captured` (announced with a
+`session` snapshot), later ones are ignored, and casting a dropped child's id casts its master. URLs are
+compared by `stream_key` (scheme + host + path + query without volatile params such as rotating tokens, `exp`,
+`_HLS_msn`, cache busters). A media playlist seen without its master that carries only audio or subtitles
+(segment names, or sniffed packed audio) gets `media_type: "audio" | "subtitles"`, no quality and a low score:
+clients list it last and never pick it as the best stream / auto-open the panel for it.
+The list is cleared (pending probes/thumbnails cancelled, `session` snapshot broadcast) when the **top-level**
+frame navigates to another document URL, SPA history navigations included; `#hash`-only changes and iframe
+navigations keep it. The manual `DELETE …/captured` empties it too and forgets the URLs already seen (anything
+fetched afterwards is listed again; child playlists of known masters stay hidden).
 
 Max 2 concurrent sessions (a 3rd create first reaps idle ones, else 429 `browser_limit`); sessions with no
 connected `/ws/browser` viewer and no input for 10 minutes are closed. Casting/bookmarking a captured stream records
@@ -454,6 +480,10 @@ Frames come from CDP `Page.startScreencast` (JPEG, quality ~60, everyNthFrame tu
 While a captured stream's thumbnail is taken (clipped `page.screenshot`), Chromium emits screencast frames sized like
 the clip: those are dropped, and the screencast is restarted afterwards so viewers get a fresh full-viewport frame
 (a static page sends none on its own).
+Cast diagnostics (pychromecast driver): every LOAD is logged at INFO (shortened contentId, contentType,
+streamType, hlsSegmentFormat, hlsVideoSegmentFormat, tracks, activeTrackIds), media status transitions at INFO
+(WARNING with idleReason ERROR), and the receiver's `ERROR`/`LOAD_FAILED`/`INVALID_REQUEST` messages at WARNING with
+their `detailedErrorCode`.
 Popups/new tabs opened by the page are followed into the same session (ad popups closed automatically, but their
 traffic is still sniffed). Tests mock Playwright entirely.
 
@@ -473,6 +503,10 @@ The user's reference is a mobile "web video caster" style app. Required behaviou
   **quality** (e.g. "720p HD", derived from HLS master RESOLUTION / probed size) and a **Live** badge when live,
   and four big actions: **Cast**, **Queue** (add to queue), **Play** (preview in-app), **Bookmark** (favorite).
   If several streams were captured, the panel lets you switch between them (best quality first, ads/short segments deprioritized).
+  A **Clear list** icon button (aria-label "Clear list" / "Svuota elenco", no confirmation) sits under the × of the
+  panel, in the header of the desktop side panel and of the phone's streams drawer: it calls
+  `DELETE /api/browser/sessions/{id}/captured` and dismisses the panel; the next stream found pops it up again.
+  The panel never pops up by itself for an audio/subtitles-only rendition (the "N video" pill still opens it).
 - Bottom toolbar: back, forward, home, sessions/tabs count, new session, more menu.
 
 Contract additions (optional/nullable fields, backward compatible) on `CapturedStream`:
@@ -484,6 +518,7 @@ Contract additions (optional/nullable fields, backward compatible) on `CapturedS
   width: number | null; height: number | null;
   is_live: boolean | null;       // HLS without EXT-X-ENDLIST ⇒ live
   score: number;                 // ranking: higher = more likely the main video
+  media_type?: "audio" | "subtitles" | null; // HLS media playlist without video, no master seen: ranked last
   preview_url: string | null;    // (backend addition) same-origin /proxy path replaying the captured headers,
                                  // usable directly by the in-app "Play" preview
 ```

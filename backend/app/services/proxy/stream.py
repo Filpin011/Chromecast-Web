@@ -13,7 +13,16 @@ from fastapi.responses import Response, StreamingResponse
 from app.errors import AppError
 from app.services.net import DESKTOP_UA
 from app.services.proxy import dash
-from app.services.proxy.hls import decode_url, filter_variants, is_master_playlist, rewrite_playlist, url_filename
+from app.services.proxy.hls import (
+    DISGUISE_EXTS,
+    decode_url,
+    filter_variants,
+    harmonize_audio_defaults,
+    is_master_playlist,
+    media_filename,
+    rewrite_playlist,
+    url_filename,
+)
 from app.services.proxy.tokens import ProxyTarget, TokenRegistry
 
 log = logging.getLogger(__name__)
@@ -47,7 +56,7 @@ def upstream_url(target: ProxyTarget, path: str, query: str = "") -> str:
             raise AppError(404, "Malformed proxy path", "token_not_found") from exc
         if not base.startswith(("http://", "https://")):
             raise AppError(404, "Malformed proxy path", "token_not_found")
-        if not rest or rest == url_filename(base):
+        if not rest or rest == url_filename(base) or rest in {media_filename(base, e) for e in DISGUISE_EXTS}:
             return base
         return urljoin(base, rest)
     if path.startswith("a/"):
@@ -87,8 +96,66 @@ def _is_playlist_body(head: bytes) -> bool:
     return head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(b"#EXTM3U")
 
 
+# --- disguised media segments -------------------------------------------------------
+# Some CDNs serve HLS segments as text/html or image/* (sometimes with a fake PNG/JPEG
+# header in front of the MPEG-TS data). hls.js copes; the Cast receiver does not.
+MEDIA_SNIFF_BYTES = 64 * 1024
+IMAGE_SIGNATURES = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"BM")
+EXT_TYPES = {
+    ".ts": "video/mp2t", ".m4s": "video/mp4", ".mp4": "video/mp4", ".aac": "audio/aac",
+    ".vtt": "text/vtt",
+}
+
+
+def _is_media_type(content_type: str) -> bool:
+    ct = content_type.lower()
+    return ct.startswith(("video/", "audio/")) or "mpegurl" in ct or "dash+xml" in ct or ct.startswith("text/vtt")
+
+
+def _ts_sync_offset(data: bytes, limit: int = MEDIA_SNIFF_BYTES) -> int | None:
+    """First offset with three MPEG-TS sync bytes 188 bytes apart."""
+    end = min(len(data) - 376, limit)
+    i = data.find(b"\x47", 0, max(end, 0))
+    while 0 <= i < end:
+        if data[i + 188] == 0x47 and data[i + 376] == 0x47:
+            return i
+        i = data.find(b"\x47", i + 1, end)
+    return None
+
+
+def sniff_media(head: bytes) -> tuple[str | None, int]:
+    """(content type, bytes of junk to strip) for the start of a media segment."""
+    if head.startswith(b"WEBVTT") or head.startswith(b"\xef\xbb\xbfWEBVTT"):
+        return "text/vtt", 0
+    if len(head) > 376 and head[0] == 0x47 and head[188] == 0x47:
+        return "video/mp2t", 0
+    if head[4:8] in (b"ftyp", b"styp", b"moof", b"moov", b"sidx"):
+        return "video/mp4", 0
+    if head.startswith(b"ID3") or (len(head) > 1 and head[0] == 0xFF and (head[1] & 0xF6) == 0xF0):
+        return "audio/aac", 0
+    if head.startswith(b"\x0b\x77"):
+        return "audio/ac3", 0
+    if head.startswith(IMAGE_SIGNATURES):
+        off = _ts_sync_offset(head)
+        if off is not None:
+            return "video/mp2t", off
+        for box in (b"ftyp", b"styp", b"moof"):
+            pos = head.find(box, 8)
+            if pos >= 4:
+                return "video/mp4", pos - 4
+    return None, 0
+
+
 class ProxyService:
-    def __init__(self, client: httpx.AsyncClient, tokens: TokenRegistry, prefix: str = "/proxy") -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        tokens: TokenRegistry,
+        prefix: str = "/proxy",
+        *,
+        audio_language: str | None = None,
+    ) -> None:
+        self.audio_language = audio_language or None
         self.client = client
         self.tokens = tokens
         self.prefix = prefix
@@ -135,36 +202,54 @@ class ProxyService:
         for h in PASS_HEADERS:
             if h in upstream.headers and not (encoded and h == "content-length"):
                 out_headers[h] = upstream.headers[h]
+        # media type implied by the (possibly rewritten) file name, e.g. ``0001.ts``
+        dot = path.rfind(".")
+        path_type = EXT_TYPES.get(path[dot:].lower()) if dot > path.rfind("/") else None
+        disguised = upstream.status_code < 400 and not _is_media_type(ct)
         if method == "HEAD":
             await upstream.aclose()
+            if disguised and path_type:
+                out_headers["content-type"] = path_type
             return Response(status_code=upstream.status_code, headers=out_headers)
 
         chunks = upstream.aiter_bytes(64 * 1024)
         head = b""
-        if upstream.status_code == 200 and _may_be_playlist(ct):
+        if upstream.status_code in (200, 206) and (_may_be_playlist(ct) or disguised):
             # Peek: a playlist served with a non-HLS type/URL must still be rewritten,
-            # otherwise the receiver fetches segments directly (no Referer/Cookie → 403).
+            # otherwise the receiver fetches segments directly (no Referer/Cookie → 403);
+            # a media segment served as text/html or image/* gets its real type.
+            want = MEDIA_SNIFF_BYTES if disguised else SNIFF_BYTES
             try:
                 async for chunk in chunks:
                     head += chunk
-                    if len(head) >= SNIFF_BYTES:
+                    if len(head) >= want:
                         break
             except httpx.HTTPError as exc:
                 await upstream.aclose()
                 return Response(f"Upstream error: {exc}", status_code=502, headers=CORS)
-            if _is_playlist_body(head):
+            if upstream.status_code == 200 and _is_playlist_body(head):
                 try:
                     body = await self._read_limited(chunks, head)
                 finally:
                     await upstream.aclose()
                 return self._playlist_response(body, str(upstream.url), target)
-            if b"<MPD" in head:  # DASH manifest served as text/xml, octet-stream, ...
+            if upstream.status_code == 200 and b"<MPD" in head:  # DASH served as text/xml, octet-stream, ...
                 try:
                     body = await self._read_limited(chunks, head)
                 finally:
                     await upstream.aclose()
                 mpd = self._mpd_response(body, str(upstream.url), target)
                 return mpd or Response(body, status_code=upstream.status_code, media_type=ct or None, headers=CORS)
+            if disguised:
+                real_type, junk = sniff_media(head) if upstream.status_code == 200 else (None, 0)
+                real_type = real_type or path_type
+                if real_type:
+                    out_headers["content-type"] = real_type
+                if junk:
+                    log.info("proxy: stripped %d-byte fake header from %s segment", junk, real_type)
+                    head = head[junk:]
+                    out_headers.pop("content-length", None)
+                    out_headers.pop("content-range", None)
 
         async def body_iter() -> AsyncIterator[bytes]:
             try:
@@ -183,6 +268,8 @@ class ProxyService:
         text = body.decode("utf-8", errors="replace")
         if is_master_playlist(text):
             text = filter_variants(text)  # one container for the whole LOAD (see filter_variants)
+            # one audio language across groups, so variant switches don't change it
+            text = harmonize_audio_defaults(text, self.audio_language)
         rewritten = rewrite_playlist(text, final_url, target.token, self.prefix)
         return Response(
             rewritten,

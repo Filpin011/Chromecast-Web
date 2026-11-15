@@ -43,6 +43,8 @@ with a built-in remote browser that finds the video inside web pages for you.
 **Remote browser**
 - Browse any site from your phone: tap, scroll, type. Detected streams slide up in a panel with a thumbnail,
   quality (*1080p FHD*) and a *Live* badge — **Cast**, **Queue**, **Preview** or **Favorite** in one tap.
+  An HLS stream with separate audio/subtitle tracks shows up once (its master, which is what gets cast); the list
+  starts over when the page changes, or empty it yourself with **Clear list**.
 - **Ad blocking like uBlock Origin**: Brave's `adblock` engine with uBO's default lists, cosmetic filters,
   a per-site switch and a blocked-requests counter.
 - **Popups held back**: *"The page wants to open …"* → Open / Block / Always block. One tap on × closes everything.
@@ -204,6 +206,7 @@ default device, idle image, force proxy, ad blocking, popup policy — is set in
 | `FRONTEND_DIR` | `../frontend/out` (image: `/app/frontend`) | Static export served at `/`. |
 | `ENABLE_PLAYWRIGHT` | `true` | Web-page extraction and the remote browser (headless Chromium). |
 | `FILTERS_AUTO_UPDATE` | `true` | Download/refresh uBlock Origin's default lists every 24 h; `false` = bundled fallback list only. |
+| `AUDIO_LANGUAGE` | unset | Preferred audio language for HLS streams with several audio tracks (`it`, `ita`, `en`…); unset = the stream's own default. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. |
 | `FFMPEG_PATH` | `ffmpeg` | FFmpeg binary used by `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` next to `FFMPEG_PATH` | FFprobe binary (codec detection). |

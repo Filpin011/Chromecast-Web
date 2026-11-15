@@ -126,6 +126,7 @@ def build_services(
         force_proxy=lambda: db.get_settings().force_proxy,
         filters=filters,
         adblock_enabled=adblock_for,
+        audio_language=config.audio_language,
     )
 
     def preview(url: str, headers: dict[str, str]) -> str:
@@ -158,7 +159,7 @@ def build_services(
         hub=hub,
         http=http,
         tokens=tokens,
-        proxy=ProxyService(http, tokens),
+        proxy=ProxyService(http, tokens, audio_language=config.audio_language),
         restream=restream,
         resolver=resolver,
         cast=cast,

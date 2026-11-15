@@ -44,6 +44,8 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
 **Browser remoto**
 - Navighi qualsiasi sito dal telefono: tap, scroll, tastiera. Gli stream trovati compaiono in un pannello con
   anteprima, qualità (*1080p FHD*) e badge *Live* — **Trasmetti**, **Coda**, **Anteprima** o **Preferito** con un tap.
+  Uno stream HLS con tracce audio/sottotitoli separate compare una volta sola (il master, che è ciò che viene
+  trasmesso); l'elenco riparte quando cambi pagina, oppure lo svuoti tu con **Svuota elenco**.
 - **Blocco pubblicità come uBlock Origin**: motore `adblock` di Brave con le liste predefinite di uBO, filtri
   cosmetici, interruttore per sito e contatore delle richieste bloccate.
 - **Popup trattenuti**: *"La pagina vuole aprire …"* → Apri / Blocca / Blocca sempre. Un tap sulla × chiude tutto.
@@ -209,6 +211,7 @@ nell'app, in **Impostazioni**.
 | `FRONTEND_DIR` | `../frontend/out` (immagine: `/app/frontend`) | Export statico servito su `/`. |
 | `ENABLE_PLAYWRIGHT` | `true` | Estrazione dalle pagine web e browser remoto (Chromium headless). |
 | `FILTERS_AUTO_UPDATE` | `true` | Scarica/aggiorna le liste predefinite di uBlock Origin ogni 24 ore; `false` = solo la lista di riserva inclusa. |
+| `AUDIO_LANGUAGE` | non impostata | Lingua audio preferita per gli stream HLS con più tracce audio (`it`, `ita`, `en`…); vuota = quella predefinita dello stream. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. |
 | `FFMPEG_PATH` | `ffmpeg` | Binario FFmpeg usato da `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` accanto a `FFMPEG_PATH` | Binario FFprobe (riconoscimento codec). |

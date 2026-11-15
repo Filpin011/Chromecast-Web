@@ -36,6 +36,9 @@ class AppConfig(BaseSettings):
     # download/refresh the uBO default filter lists every 24h (bundled fallback list is always used)
     filters_auto_update: bool = True
     log_level: str = "info"
+    # preferred HLS audio language ("it", "ita", "en-US", ...): the rendition made DEFAULT in
+    # every audio group of masters served to the Chromecast; unset = the master's own default
+    audio_language: str | None = None
     # CORS_ORIGINS: comma-separated extra origins; CORS_ORIGIN_REGEX: "" disables the LAN default
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]

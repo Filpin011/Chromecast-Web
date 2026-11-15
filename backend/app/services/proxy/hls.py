@@ -57,7 +57,29 @@ def proxy_path(token: str, absolute_url: str, prefix: str = "/proxy") -> str:
     return f"{prefix}/{token}/u/{encode_url(absolute_url)}/{url_filename(absolute_url)}"
 
 
-def _rewrite_uri(uri: str, base_url: str, token: str, prefix: str) -> str:
+# Extensions a Cast receiver recognises as HLS media. CDNs often disguise segments as
+# ``.html``/``.jpg``/``.png``/``.js``...: hls.js ignores the name, but the Cast receiver
+# then HEADs the URL, sees text/html or image/* and fails the LOAD.
+MEDIA_EXTS = frozenset(
+    {".ts", ".m2ts", ".mts", ".aac", ".m4a", ".mp3", ".ac3", ".ec3", ".mp4", ".m4s", ".m4v",
+     ".cmfv", ".cmfa", ".cmft", ".vtt", ".webvtt", ".srt", ".key", ".m3u8"}
+)
+DISGUISE_EXTS = (".ts", ".m4s", ".mp4")
+
+
+def media_filename(url: str, ext: str) -> str:
+    """``url_filename`` with a media extension (``ext`` in DISGUISE_EXTS) replacing a fake one."""
+    name = url_filename(url)
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return f"{stem or 'seg'}{ext}"
+
+
+def _needs_media_name(url: str) -> bool:
+    name = url_filename(url).lower()
+    return "." not in name or name[name.rfind(".") :] not in MEDIA_EXTS
+
+
+def _rewrite_uri(uri: str, base_url: str, token: str, prefix: str, media_ext: str | None = None) -> str:
     uri = uri.strip()
     if not uri:
         return uri
@@ -65,6 +87,8 @@ def _rewrite_uri(uri: str, base_url: str, token: str, prefix: str) -> str:
     if scheme and scheme not in ("http", "https"):
         return uri  # data:, skd://, etc. — leave untouched
     absolute = urljoin(base_url, uri)
+    if media_ext and _needs_media_name(absolute):
+        return f"{prefix}/{token}/u/{encode_url(absolute)}/{media_filename(absolute, media_ext)}"
     return proxy_path(token, absolute, prefix)
 
 
@@ -75,6 +99,10 @@ def rewrite_playlist(text: str, base_url: str, token: str, prefix: str = "/proxy
     - ``URI="..."`` attributes on any tag (EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA,
       EXT-X-I-FRAME-STREAM-INF, EXT-X-SESSION-KEY, EXT-X-PART, EXT-X-PRELOAD-HINT, ...)
     """
+    # Media playlists: segments (and the fMP4 init segment) get a real media extension
+    # when the upstream disguises them (see MEDIA_EXTS).
+    master = is_master_playlist(text)
+    seg_ext = None if master else (".m4s" if "#EXT-X-MAP" in text else ".ts")
     out: list[str] = []
     for raw in text.splitlines():
         line = raw.rstrip("\r")
@@ -83,12 +111,14 @@ def rewrite_playlist(text: str, base_url: str, token: str, prefix: str = "/proxy
             out.append(line)
         elif stripped.startswith("#"):
             if "URI=" in stripped:
+                ext = ".mp4" if (seg_ext and stripped.startswith("#EXT-X-MAP")) else None
                 line = URI_ATTR_RE.sub(
-                    lambda mt: f'URI="{_rewrite_uri(mt.group(1), base_url, token, prefix)}"', line
+                    lambda mt, ext=ext: f'URI="{_rewrite_uri(mt.group(1), base_url, token, prefix, ext)}"',
+                    line,
                 )
             out.append(line)
         else:
-            out.append(_rewrite_uri(stripped, base_url, token, prefix))
+            out.append(_rewrite_uri(stripped, base_url, token, prefix, seg_ext))
     result = "\n".join(out)
     if text.endswith("\n"):
         result += "\n"
@@ -157,7 +187,7 @@ PACKED_AUDIO_FORMATS = {".aac": "aac", ".mp3": "mp3", ".ac3": "ac3", ".ec3": "e_
 MAP_URI_RE = re.compile(r'#EXT-X-MAP:.*?URI="([^"]*)"')
 
 
-def _uri_ext(uri: str) -> str:
+def uri_ext(uri: str) -> str:
     name = urlsplit(uri.strip()).path.rsplit("/", 1)[-1].lower()
     return "." + name.rsplit(".", 1)[-1] if "." in name else ""
 
@@ -170,11 +200,11 @@ def segment_format(media_text: str) -> str | None:
     mt = MAP_URI_RE.search(media_text)
     if mt is not None:
         # EXT-X-MAP is how fMP4/CMAF declares its init segment (a TS init section is rare)
-        return None if _uri_ext(mt.group(1)) == ".ts" else "fmp4"
+        return None if uri_ext(mt.group(1)) == ".ts" else "fmp4"
     for line in media_text.splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
-            ext = _uri_ext(line)
+            ext = uri_ext(line)
             if ext in FMP4_SEGMENT_EXTS:
                 return "fmp4"
             return PACKED_AUDIO_FORMATS.get(ext)
@@ -290,3 +320,148 @@ def sniff_segment(head: bytes) -> str | None:
     if frame[:2] == b"\x0b\x77":  # (E-)AC-3 sync word; bsid > 10 means E-AC-3
         return "e_ac3" if frame[5] >> 3 > 10 else "ac3"
     return None
+
+
+# ---------------------------------------------------------------- master structure
+
+def child_playlist_urls(master_text: str, base_url: str) -> list[str]:
+    """Every playlist a master references, resolved against ``base_url``: the variant
+    URIs (after ``#EXT-X-STREAM-INF``) and the ``URI=`` of ``#EXT-X-MEDIA`` (audio,
+    subtitles, ...) and ``#EXT-X-I-FRAME-STREAM-INF`` renditions."""
+    out: list[str] = []
+    expect_variant = False
+    for raw in master_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            if line.startswith("#EXT-X-STREAM-INF"):
+                expect_variant = True
+            elif line.startswith(("#EXT-X-MEDIA:", "#EXT-X-I-FRAME-STREAM-INF")):
+                uri = _tag_attrs(line).get("URI")
+                if uri:
+                    out.append(urljoin(base_url, uri))
+            continue
+        if expect_variant:
+            out.append(urljoin(base_url, line))
+            expect_variant = False
+    return list(dict.fromkeys(out))
+
+
+SUBTITLE_SEGMENT_EXTS = (".vtt", ".webvtt", ".srt", ".ttml", ".dfxp")
+AUDIO_SEGMENT_EXTS = (*PACKED_AUDIO_FORMATS, ".m4a", ".cmfa", ".mp4a")
+AUDIO_FORMATS = ("aac", "mp3", "ac3", "e_ac3")
+
+
+def media_playlist_kind(media_text: str) -> str | None:
+    """"audio" / "subtitles" for a media playlist whose segments are only audio or text
+    (judged from the segment names); None for video or unknown (and for masters)."""
+    if is_master_playlist(media_text):
+        return None
+    for line in media_text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            ext = uri_ext(line)
+            if ext in SUBTITLE_SEGMENT_EXTS:
+                return "subtitles"
+            if ext in AUDIO_SEGMENT_EXTS:
+                return "audio"
+            return None
+    return None
+
+
+KEY_RE = re.compile(r"^#EXT-X-KEY:(.*)$")
+
+
+def first_segment_key(media_text: str) -> tuple[str, str, bytes] | None:
+    """(METHOD, key URI, IV) of the ``#EXT-X-KEY`` that applies to the first segment, or
+    None when it is not encrypted. Without an ``IV`` attribute the IV is the segment's
+    media sequence number (RFC 8216 §5.2)."""
+    seq = 0
+    key: dict[str, str] | None = None
+    for raw in media_text.splitlines():
+        line = raw.strip()
+        if line.startswith("#EXT-X-MEDIA-SEQUENCE:"):
+            try:
+                seq = int(line.partition(":")[2].strip())
+            except ValueError:
+                seq = 0
+        elif line.startswith("#EXT-X-KEY:"):
+            key = _tag_attrs(line)
+        elif line and not line.startswith("#"):
+            break
+    if not key:
+        return None
+    method = key.get("METHOD", "NONE").upper()
+    if method == "NONE" or not key.get("URI"):
+        return None
+    iv_hex = key.get("IV", "")
+    try:
+        if iv_hex.lower().startswith("0x"):
+            iv = bytes.fromhex(iv_hex[2:].rjust(32, "0"))[-16:]
+        else:
+            iv = seq.to_bytes(16, "big")
+    except ValueError:
+        iv = seq.to_bytes(16, "big")
+    return method, key["URI"], iv
+
+
+def _lang_matches(lang: str | None, prefer: str) -> bool:
+    """``it`` matches ``it``, ``it-IT``, ``ita``; ``en`` matches ``eng``, ``en-US``..."""
+    if not lang:
+        return False
+    a, b = lang.lower().split("-")[0], prefer.lower().split("-")[0]
+    return a == b or (len(a) != len(b) and (a.startswith(b) or b.startswith(a)))
+
+
+def harmonize_audio_defaults(master_text: str, prefer: str | None = None) -> str:
+    """Make every ``#EXT-X-MEDIA:TYPE=AUDIO`` group default to the *same* language.
+
+    The Cast receiver starts with the DEFAULT=YES rendition of the first variant's audio
+    group and, when it later switches variant (ABR or an error retry), takes the default of
+    the new variant's group: masters whose groups disagree (``ita`` default in one, ``eng``
+    in another) make the TV change language on its own. The chosen language is ``prefer``
+    when the master offers it, else the first variant group's default, else its first
+    rendition. In each group the matching rendition becomes ``DEFAULT=YES,AUTOSELECT=YES``
+    and the others ``DEFAULT=NO``; groups without that language are left untouched.
+    A master with a single audio rendition per group is returned unchanged.
+    """
+    lines = master_text.splitlines()
+    audio = [(i, _tag_attrs(ln.strip())) for i, ln in enumerate(lines) if ln.strip().startswith("#EXT-X-MEDIA:")]
+    audio = [(i, a) for i, a in audio if a.get("TYPE") == "AUDIO"]
+    groups: dict[str, list[tuple[int, dict[str, str]]]] = {}
+    for i, a in audio:
+        groups.setdefault(a.get("GROUP-ID", ""), []).append((i, a))
+    if not any(len(g) > 1 for g in groups.values()):
+        return master_text
+    lang: str | None = None
+    if prefer and any(_lang_matches(a.get("LANGUAGE"), prefer) for _, a in audio):
+        lang = prefer
+    else:
+        first_group = next(
+            (_tag_attrs(ln.strip()).get("AUDIO") for ln in lines if ln.strip().startswith("#EXT-X-STREAM-INF")),
+            None,
+        )
+        renditions = groups.get(first_group or "", []) or next(iter(groups.values()))
+        chosen = next((a for _, a in renditions if a.get("DEFAULT", "").upper() == "YES"), renditions[0][1])
+        lang = chosen.get("LANGUAGE")
+    if not lang:
+        return master_text
+    for rends in groups.values():
+        match = next((i for i, a in rends if _lang_matches(a.get("LANGUAGE"), lang)), None)
+        if match is None:
+            continue
+        for i, _ in rends:
+            lines[i] = _set_default(lines[i], i == match)
+    result = "\n".join(lines)
+    return result + "\n" if master_text.endswith("\n") else result
+
+
+def _set_default(line: str, default: bool) -> str:
+    flag = "YES" if default else "NO"
+    line = re.sub(r"DEFAULT=(YES|NO)", f"DEFAULT={flag}", line) if "DEFAULT=" in line else f"{line},DEFAULT={flag}"
+    if default:
+        line = re.sub(r"AUTOSELECT=NO", "AUTOSELECT=YES", line)
+        if "AUTOSELECT=" not in line:
+            line += ",AUTOSELECT=YES"
+    return line

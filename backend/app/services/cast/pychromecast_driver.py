@@ -136,6 +136,58 @@ def check_load_response(sent: bool, response: dict[str, Any] | None) -> None:
         raise CastError(f"The Chromecast refused the media ({mtype}{f', {detail}' if detail else ''})")
 
 
+RECEIVER_ERROR_TYPES = ("ERROR", "LOAD_FAILED", "LOAD_CANCELLED", "INVALID_REQUEST", "INVALID_PLAYER_STATE")
+
+
+def _short(url: str | None, limit: int = 96) -> str:
+    url = url or ""
+    return url if len(url) <= limit else url[: limit - 1] + "…"
+
+
+def load_summary(media: MediaRequest, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """What the LOAD tells the receiver, for the log (the URL is shortened, no headers)."""
+    info = kwargs.get("media_info") or {}
+    return {
+        "contentId": _short(media.url),
+        "contentType": media.mime_type,
+        "streamType": kwargs.get("stream_type"),
+        "hlsSegmentFormat": info.get("hlsSegmentFormat"),
+        "hlsVideoSegmentFormat": info.get("hlsVideoSegmentFormat"),
+        "tracks": [
+            f"{t.get('trackId')}:{t.get('type')}/{t.get('language')}" for t in info.get("tracks") or []
+        ],
+        # never sent: the HLS audio renditions only become tracks once the receiver parsed
+        # the master (their ids are the receiver's); see ARCHITECTURE "audio renditions"
+        "activeTrackIds": info.get("activeTrackIds"),
+        "currentTime": kwargs.get("current_time"),
+    }
+
+
+def log_receiver_errors(controller: Any, device_id: str) -> None:
+    """Log the receiver's error messages on the media namespace (``ERROR`` with its
+    ``detailedErrorCode``, ``LOAD_FAILED``, ...): pychromecast drops most of them silently."""
+    orig = getattr(controller, "receive_message", None)
+    if orig is None or getattr(orig, "_cw_logged", False):
+        return
+
+    def receive_message(message: Any, data: dict[str, Any]) -> Any:
+        with contextlib.suppress(Exception):
+            if isinstance(data, dict) and data.get("type") in RECEIVER_ERROR_TYPES:
+                log.warning(
+                    "receiver %s on %s: detailedErrorCode=%s reason=%s itemId=%s",
+                    data.get("type"),
+                    device_id,
+                    data.get("detailedErrorCode"),
+                    data.get("reason"),
+                    data.get("itemId"),
+                )
+        return orig(message, data)
+
+    receive_message._cw_logged = True  # type: ignore[attr-defined]
+    with contextlib.suppress(Exception):
+        controller.receive_message = receive_message
+
+
 class _Listener:
     """Bridges pychromecast's listener interfaces to the driver.
 
@@ -427,6 +479,8 @@ class PyChromecastDriver:
         dmr = DefaultMediaReceiverController()
         cast.register_handler(dmr)
         self._dmr[device_id] = dmr
+        log_receiver_errors(dmr, device_id)
+        log_receiver_errors(cast.media_controller, device_id)
         listener = _Listener(self, device_id, cast)
         cast.register_status_listener(listener)
         cast.media_controller.register_status_listener(listener)
@@ -579,6 +633,16 @@ class PyChromecastDriver:
             return
         prev_state, prev_reason = st.player_state, st.idle_reason
         state = ms.player_state if ms.player_state in ("IDLE", "PLAYING", "PAUSED", "BUFFERING") else "UNKNOWN"
+        if (state, ms.idle_reason) != (prev_state, prev_reason):
+            log.log(
+                logging.WARNING if ms.idle_reason == "ERROR" else logging.INFO,
+                "media status %s: %s -> %s idleReason=%s content=%s",
+                device_id,
+                prev_state,
+                state,
+                ms.idle_reason,
+                _short(ms.content_id),
+            )
         st.player_state = state
         st.idle_reason = ms.idle_reason
         st.title = ms.title or st.title
@@ -683,6 +747,7 @@ class PyChromecastDriver:
             raise CastError(f"Device {device_id} not connected")
         kwargs = self.build_play_kwargs(media)
         timeout = media.load_timeout or LOAD_TIMEOUT
+        log.info("LOAD %s: %s", device_id, load_summary(media, kwargs))
 
         def _play() -> None:
             # DefaultMediaReceiverController (app_must_match=True) launches the Default
