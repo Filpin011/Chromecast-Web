@@ -13,7 +13,7 @@ dependencies = [
     "pychromecast==14.1.1",
     "zeroconf==0.154.0",
     "yt-dlp==2026.10.26",
-    "playwright==1.65.1",
+    "playwright==1.65.2",
     "adblock==0.6.0",
 ]
 
