@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, ListX, MonitorPlay, Play, X } from "lucide-react";
+import { Cast, ListPlus, ListX, MonitorPlay, Play, Star, X } from "lucide-react";
 import { motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -137,7 +137,7 @@ export function StreamPanel({
         <ActionButton icon={ListPlus} label={t("common.queue")} onClick={() => onQueue(stream)} disabled={busy} />
         <ActionButton icon={Play} label={t("common.preview")} onClick={() => onPlay(stream)} />
         {onWatch && <ActionButton icon={MonitorPlay} label={t("localPlayer.watchHere")} onClick={() => onWatch(stream)} />}
-        <ActionButton icon={Bookmark} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
+        <ActionButton icon={Star} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
       </div>
     </motion.section>
   );

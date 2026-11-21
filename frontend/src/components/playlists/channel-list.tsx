@@ -1,7 +1,7 @@
 "use client";
 
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Cast, Eye, ListPlus, MonitorPlay, MoreVertical, Star, Tv } from "lucide-react";
+import { Cast, ListPlus, MonitorPlay, MoreVertical, Play, Star, Tv } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Thumb } from "@/components/common/thumb";
 import {
@@ -25,7 +25,7 @@ export type ChannelAction = "queue" | "favorite" | "preview" | "watch";
 const ACTIONS: { action: ChannelAction; label: MessageKey; icon: typeof Cast }[] = [
   { action: "queue", label: "media.addToQueue", icon: ListPlus },
   { action: "favorite", label: "media.addToFavorites", icon: Star },
-  { action: "preview", label: "common.preview", icon: Eye },
+  { action: "preview", label: "common.preview", icon: Play },
   { action: "watch", label: "localPlayer.watchHere", icon: MonitorPlay },
 ];
 

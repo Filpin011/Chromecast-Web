@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, MonitorPlay, Play, Radar } from "lucide-react";
+import { Cast, ListPlus, MonitorPlay, Play, Radar, Star } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -89,7 +89,7 @@ export function CapturedList({
               )}
               {onBookmark && (
                 <Button variant="secondary" className="gap-1.5" onClick={() => onBookmark(s)} aria-label={t("captured.favoriteName", { name: shortUrl(s.url, 30) })}>
-                  <Bookmark className="size-4" /> {t("common.favorite")}
+                  <Star className="size-4" /> {t("common.favorite")}
                 </Button>
               )}
             </div>

@@ -76,7 +76,7 @@ export function MediaActions({
           onClick={onFavorite}
           className="rounded-xl"
         >
-          <Star className={cn("size-5", favorited && "fill-amber-400 text-amber-400")} />
+          <Star className={cn("size-5", favorited && "fill-current text-amber-500")} />
         </Button>
       )}
       {onOpenBrowser && (
