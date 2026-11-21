@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator
 from urllib.parse import urljoin
 
@@ -11,6 +14,7 @@ from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
 from app.errors import AppError
+from app.logging_setup import short_url, shorten_urls
 from app.services.net import DESKTOP_UA
 from app.services.proxy import dash
 from app.services.proxy.hls import (
@@ -23,6 +27,7 @@ from app.services.proxy.hls import (
     rewrite_playlist,
     url_filename,
 )
+from app.services.proxy.stats import SLOW_SECONDS, ProxyStats
 from app.services.proxy.tokens import ProxyTarget, TokenRegistry
 
 log = logging.getLogger(__name__)
@@ -159,9 +164,25 @@ class ProxyService:
         self.client = client
         self.tokens = tokens
         self.prefix = prefix
+        self.stats = ProxyStats()
 
     async def handle(self, target: ProxyTarget, path: str, request: Request) -> Response:
         url = upstream_url(target, path, request.url.query)
+        start = time.monotonic()
+        try:
+            response = await self._handle(target, path, request, url, start)
+        except asyncio.CancelledError:  # e.g. a playlist refresh stuck on the upstream
+            log.warning(
+                "proxy %s %s: client gave up after %.1f s waiting for the upstream",
+                target.token[:6], short_url(url), time.monotonic() - start,
+            )
+            raise
+        elapsed = time.monotonic() - start
+        if not isinstance(response, StreamingResponse) and elapsed > SLOW_SECONDS:
+            log.info("proxy %s %s: slow upstream, answered in %.1f s", target.token[:6], short_url(url), elapsed)
+        return response
+
+    async def _handle(self, target: ProxyTarget, path: str, request: Request, url: str, start: float) -> Response:
         headers = dict(target.headers)
         if not any(k.lower() == "user-agent" for k in headers):
             # same UA the resolver probed with; never python-httpx (403 on many panels/CDNs)
@@ -170,12 +191,16 @@ class ProxyService:
             if h in request.headers:
                 headers[h.title()] = request.headers[h]
         method = "HEAD" if request.method == "HEAD" else "GET"
+        tok = target.token
         try:
             upstream = await self.client.send(
                 self.client.build_request(method, url, headers=headers), stream=True
             )
         except httpx.HTTPError as exc:
-            log.info("proxy upstream error %s: %s", url, exc)
+            log.warning(
+                "proxy %s upstream error %s %s: %s",
+                tok[:6], method, short_url(url), shorten_urls(str(exc)) or type(exc).__name__,
+            )
             return Response(f"Upstream error: {exc}", status_code=502, headers=CORS)
 
         ct = upstream.headers.get("content-type", "")
@@ -208,12 +233,14 @@ class ProxyService:
         disguised = upstream.status_code < 400 and not _is_media_type(ct)
         if method == "HEAD":
             await upstream.aclose()
+            log.debug("proxy %s HEAD %s: status=%d", tok[:6], short_url(url), upstream.status_code)
             if disguised and path_type:
                 out_headers["content-type"] = path_type
             return Response(status_code=upstream.status_code, headers=out_headers)
 
         chunks = upstream.aiter_bytes(64 * 1024)
         head = b""
+        ttfb = time.monotonic() - start  # upstream response headers received
         if upstream.status_code in (200, 206) and (_may_be_playlist(ct) or disguised):
             # Peek: a playlist served with a non-HLS type/URL must still be rewritten,
             # otherwise the receiver fetches segments directly (no Referer/Cookie → 403);
@@ -226,6 +253,11 @@ class ProxyService:
                         break
             except httpx.HTTPError as exc:
                 await upstream.aclose()
+                log.warning(
+                    "proxy %s upstream error reading %s after %.1f s: %s",
+                    tok[:6], short_url(url), time.monotonic() - start,
+                    shorten_urls(str(exc)) or type(exc).__name__,
+                )
                 return Response(f"Upstream error: {exc}", status_code=502, headers=CORS)
             if upstream.status_code == 200 and _is_playlist_body(head):
                 try:
@@ -246,30 +278,76 @@ class ProxyService:
                 if real_type:
                     out_headers["content-type"] = real_type
                 if junk:
-                    log.info("proxy: stripped %d-byte fake header from %s segment", junk, real_type)
+                    log.log(
+                        logging.INFO if self.stats.first_time(tok, url, "fake-header") else logging.DEBUG,
+                        "proxy %s: stripping %d-byte fake image header from %s segments",
+                        tok[:6], junk, real_type,
+                    )
                     head = head[junk:]
                     out_headers.pop("content-length", None)
                     out_headers.pop("content-range", None)
 
+        status = upstream.status_code
+        # what the Chromecast fetches from a rewritten playlist/manifest (``u/``, ``a/``);
+        # anything else is a progressive file, where an early close just means a seek
+        segment = path.lstrip("/").startswith(("u/", "a/"))
+        kind = "playlist" if _looks_like_playlist(url, ct) or _looks_like_mpd(url, ct) else "segment"
+
         async def body_iter() -> AsyncIterator[bytes]:
+            sent = 0
+            outcome, detail = "ok", ""
             try:
                 if head:
                     yield head
+                    sent += len(head)
                 async for chunk in chunks:
                     yield chunk
-            except httpx.HTTPError as exc:  # pragma: no cover - mid-stream failure
-                log.info("proxy stream aborted %s: %s", url, exc)
+                    sent += len(chunk)
+            except httpx.HTTPError as exc:  # mid-stream failure (incl. read timeout on a stalled body)
+                outcome, detail = "upstream-error", shorten_urls(str(exc)) or type(exc).__name__
+            except (asyncio.CancelledError, GeneratorExit):  # the client closed the connection
+                outcome = "client-gone"
+                raise
             finally:
-                await upstream.aclose()
+                try:
+                    self._record(tok, url, segment, kind, status, sent, ttfb, time.monotonic() - start,
+                                 outcome, detail)
+                finally:
+                    await upstream.aclose()
 
         return StreamingResponse(body_iter(), status_code=upstream.status_code, headers=out_headers)
+
+    def _record(
+        self, tok: str, url: str, segment: bool, kind: str, status: int, sent: int,
+        ttfb: float | None, total: float, outcome: str, detail: str,
+    ) -> None:
+        with contextlib.suppress(Exception):  # logging must never break a stream
+            if segment:
+                self.stats.segment(tok, url, status=status, nbytes=sent, ttfb=ttfb, total=total,
+                                   outcome=outcome, detail=detail, kind=kind)
+                return
+            level = logging.WARNING if outcome == "upstream-error" or status >= 400 else logging.DEBUG
+            log.log(
+                level,
+                "proxy %s stream %s: status=%d bytes=%d total=%.1fs %s%s",
+                tok[:6], short_url(url), status, sent, total,
+                "client closed" if outcome == "client-gone" else outcome,
+                f": {detail}" if detail else "",
+            )
 
     def _playlist_response(self, body: bytes, final_url: str, target: ProxyTarget) -> Response:
         text = body.decode("utf-8", errors="replace")
         if is_master_playlist(text):
+            log.debug(
+                "proxy %s master playlist %s: variants=%d",
+                target.token[:6], short_url(final_url), text.count("#EXT-X-STREAM-INF"),
+            )
             text = filter_variants(text)  # one container for the whole LOAD (see filter_variants)
             # one audio language across groups, so variant switches don't change it
             text = harmonize_audio_defaults(text, self.audio_language)
+        else:
+            with contextlib.suppress(Exception):
+                self.stats.playlist(target.token, final_url, text)
         rewritten = rewrite_playlist(text, final_url, target.token, self.prefix)
         return Response(
             rewritten,

@@ -17,11 +17,12 @@ from app import __version__
 from app.api import browser, devices, media, playlists, resolve, system, ws
 from app.config import AppConfig, get_settings
 from app.errors import AppError, install_error_handlers
+from app.logging_setup import configure_logging
 from app.services.browser.launcher import BrowserProvider
 from app.services.cast.base import CastDriver
 from app.services.container import build_services
 
-log = logging.getLogger("app")
+log = logging.getLogger(__name__)
 
 RESERVED_PREFIXES = ("api/", "ws", "proxy/", "restream/", "local/")
 # Consumed cross-origin by the Cast receiver (Origin https://www.gstatic.com) and players.
@@ -110,7 +111,7 @@ def create_app(
     in_memory_db: bool = False,
 ) -> FastAPI:
     config = settings or get_settings()
-    logging.basicConfig(level=config.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    configure_logging(config.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

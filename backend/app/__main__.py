@@ -3,6 +3,7 @@
 import uvicorn
 
 from app.config import get_settings
+from app.logging_setup import uvicorn_log_config
 
 
 def main() -> None:
@@ -12,6 +13,7 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level,
+        log_config=uvicorn_log_config(settings.log_level),
         proxy_headers=True,
     )
 

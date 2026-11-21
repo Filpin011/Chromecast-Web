@@ -241,4 +241,4 @@ def test_load_summary_and_receiver_error_logging(caplog):
         ctl.receive_message(None, {"type": "MEDIA_STATUS"})
     assert len(ctl.got) == 2
     errors = [r.getMessage() for r in caplog.records if "detailedErrorCode" in r.getMessage()]
-    assert errors == ["receiver ERROR on dev1: detailedErrorCode=314 reason=INVALID itemId=None"]
+    assert errors == ["receiver ERROR on dev1: detailedErrorCode=314 HLS_NETWORK_KEY_LOAD reason=INVALID itemId=None"]

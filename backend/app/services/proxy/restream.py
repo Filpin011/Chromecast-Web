@@ -31,6 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.logging_setup import short_url, shorten_urls
 from app.services.net import DESKTOP_UA
 from app.services.proxy.tokens import clean_headers
 
@@ -201,7 +202,7 @@ class RestreamManager:
             try:
                 await self.ensure_running(job)
             except Exception as exc:  # the receiver's own request will report it
-                log.info("restream %s warm-up failed: %s", job.token, exc)
+                log.info("restream %s warm-up failed: %s", job.token[:6], shorten_urls(str(exc)))
 
         task = asyncio.create_task(_run(), name=f"restream-warm-{job.token}")
         self._warming.add(task)
@@ -222,7 +223,7 @@ class RestreamManager:
             with contextlib.suppress(ProcessLookupError):
                 probe.kill()
         if job.running:
-            log.info("restream %s no longer loaded, stopping ffmpeg", job.token)
+            log.info("restream %s no longer loaded, stopping ffmpeg", job.token[:6])
         await self._kill(job)
 
     def start_reaper(self) -> None:
@@ -257,9 +258,9 @@ class RestreamManager:
                     continue  # requested again while we waited for the lock
                 await self._kill(job)
                 if in_use:
-                    log.info("restream %s idle but still loaded, ffmpeg stopped (output kept)", job.token)
+                    log.info("restream %s idle but still loaded, ffmpeg stopped (output kept)", job.token[:6])
                 else:
-                    log.info("restream %s idle, stopping", job.token)
+                    log.info("restream %s idle, stopping", job.token[:6])
                     shutil.rmtree(job.out_dir, ignore_errors=True)
 
     def _in_use(self, job: RestreamJob) -> bool:
@@ -329,12 +330,14 @@ class RestreamManager:
                 codec = await self.probe_video_codec(job)
                 self._check_released(job, gen)  # a killed probe says nothing about the codec
                 job.video_codec = codec
-                log.info("restream %s video codec: %s", job.token, job.video_codec)
+                log.info("restream %s video codec=%s", job.token[:6], job.video_codec)
             for mode in self.modes_for(job.video_codec):
                 await self._spawn(job, mode, append=False)
                 if await self._wait_playlist(job):
                     job.failed = None
                     return
+                if not job.released:
+                    log.warning("restream %s: ffmpeg (%s) produced no playlist", job.token[:6], mode)
                 await self._kill(job)
                 self._check_released(job, gen)  # ffmpeg was stopped, not failing
             job.failed = "ffmpeg could not produce a stream"
@@ -352,8 +355,8 @@ class RestreamManager:
         job.out_dir.mkdir(parents=True, exist_ok=True)
         job.mode = mode
         cmd = build_ffmpeg_cmd(self.ffmpeg, job, mode, append=append)
-        log.info("restream %s starting (%s, %s%s)", job.token, mode, "live" if job.live else "vod",
-                 ", resume" if append else "")
+        log.info("restream %s starting ffmpeg: mode=%s %s%s source=%s", job.token[:6], mode,
+                 "live" if job.live else "vod", " resume" if append else "", short_url(job.source))
         job.proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
         )

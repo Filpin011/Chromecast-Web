@@ -16,6 +16,7 @@ import time
 import uuid as uuidlib
 from typing import Any
 
+from app.logging_setup import short_url
 from app.models import Device, MediaTrack
 from app.services.cast.base import (
     CastError,
@@ -137,11 +138,87 @@ def check_load_response(sent: bool, response: dict[str, Any] | None) -> None:
 
 
 RECEIVER_ERROR_TYPES = ("ERROR", "LOAD_FAILED", "LOAD_CANCELLED", "INVALID_REQUEST", "INVALID_PLAYER_STATE")
+# Identical receiver messages within this window are logged once (the receiver may repeat
+# an ERROR, e.g. once for the failed request and once for the media session).
+RECEIVER_ERROR_DEDUP_SECONDS = 5.0
+
+# cast.framework.events.DetailedErrorCode (Web Receiver / CAF), values as published in the
+# sender SDKs (com.google.android.gms.cast.MediaError.DetailedErrorCode).
+DETAILED_ERROR_CODES = {
+    100: "MEDIA_UNKNOWN",
+    101: "MEDIA_ABORTED",
+    102: "MEDIA_DECODE",
+    103: "MEDIA_NETWORK",
+    104: "MEDIA_SRC_NOT_SUPPORTED",
+    110: "SOURCE_BUFFER_FAILURE",
+    200: "MEDIAKEYS_UNKNOWN",
+    201: "MEDIAKEYS_NETWORK",
+    202: "MEDIAKEYS_UNSUPPORTED",
+    203: "MEDIAKEYS_WEBCRYPTO",
+    300: "NETWORK_UNKNOWN",
+    301: "SEGMENT_NETWORK",
+    311: "HLS_NETWORK_MASTER_PLAYLIST",
+    312: "HLS_NETWORK_PLAYLIST",
+    313: "HLS_NETWORK_NO_KEY_RESPONSE",
+    314: "HLS_NETWORK_KEY_LOAD",
+    315: "HLS_NETWORK_INVALID_SEGMENT",
+    316: "HLS_SEGMENT_PARSING",
+    321: "DASH_NETWORK",
+    322: "DASH_NO_INIT",
+    331: "SMOOTH_NETWORK",
+    332: "SMOOTH_NO_MEDIA_DATA",
+    400: "MANIFEST_UNKNOWN",
+    411: "HLS_MANIFEST_MASTER",
+    412: "HLS_MANIFEST_PLAYLIST",
+    420: "DASH_MANIFEST_UNKNOWN",
+    421: "DASH_MANIFEST_NO_PERIODS",
+    422: "DASH_MANIFEST_NO_MIMETYPE",
+    423: "DASH_INVALID_SEGMENT_INFO",
+    431: "SMOOTH_MANIFEST",
+    500: "SEGMENT_UNKNOWN",
+    600: "TEXT_UNKNOWN",
+    900: "APP",
+    901: "BREAK_CLIP_LOADING_ERROR",
+    902: "BREAK_SEEK_INTERCEPTOR_ERROR",
+    903: "IMAGE_ERROR",
+    904: "LOAD_INTERRUPTED",
+    905: "LOAD_FAILED",
+    906: "MEDIA_ERROR_MESSAGE",
+    999: "GENERIC",
+}
+DETAILED_ERROR_FAMILIES = {
+    1: "media element error",
+    2: "media keys (DRM) error",
+    3: "network error",
+    4: "manifest error",
+    5: "segment error",
+    6: "text track error",
+    9: "application error",
+}
 
 
-def _short(url: str | None, limit: int = 96) -> str:
-    url = url or ""
-    return url if len(url) <= limit else url[: limit - 1] + "…"
+def describe_error_code(code: Any) -> str:
+    """``314 HLS_NETWORK_KEY_LOAD``; an unknown code gets its family: ``310 network error (3xx)``."""
+    if code is None:
+        return "-"
+    try:
+        num = int(code)
+    except (TypeError, ValueError):
+        return str(code)
+    name = DETAILED_ERROR_CODES.get(num)
+    if name:
+        return f"{num} {name}"
+    family = DETAILED_ERROR_FAMILIES.get(num // 100)
+    return f"{num} {family} ({num // 100}xx)" if family else str(num)
+
+
+def device_label(name: str | None, device_id: str) -> str:
+    """How every log line names a device: ``"Living Room TV" (1a2b3c4d)``."""
+    return f'"{name or "?"}" ({device_id[:8]})'
+
+
+def _short(url: str | None) -> str:
+    return short_url(url)
 
 
 def load_summary(media: MediaRequest, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -163,24 +240,48 @@ def load_summary(media: MediaRequest, kwargs: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def log_receiver_errors(controller: Any, device_id: str) -> None:
+def format_summary(summary: dict[str, Any]) -> str:
+    """``key=value`` pairs of a ``load_summary``, empty values left out."""
+    return " ".join(f"{k}={v}" for k, v in summary.items() if v not in (None, [], ""))
+
+
+# device id -> (message key, monotonic time) of the last receiver error logged
+_last_receiver_error: dict[str, tuple[tuple[Any, ...], float]] = {}
+
+
+def log_receiver_errors(controller: Any, device_id: str, label: str | None = None) -> None:
     """Log the receiver's error messages on the media namespace (``ERROR`` with its
-    ``detailedErrorCode``, ``LOAD_FAILED``, ...): pychromecast drops most of them silently."""
+    ``detailedErrorCode``, ``LOAD_FAILED``, ...): pychromecast drops most of them silently.
+
+    Install it on ONE controller of the media namespace per connection: pychromecast's
+    socket client hands every message to every handler registered for its namespace
+    (``SocketClient._route_message``), so wrapping both the DefaultMediaReceiverController
+    and the MediaController logged each message twice. Identical messages repeated by
+    the receiver within RECEIVER_ERROR_DEDUP_SECONDS are logged once as well.
+    """
     orig = getattr(controller, "receive_message", None)
     if orig is None or getattr(orig, "_cw_logged", False):
         return
+    who = label or device_id
 
     def receive_message(message: Any, data: dict[str, Any]) -> Any:
         with contextlib.suppress(Exception):
             if isinstance(data, dict) and data.get("type") in RECEIVER_ERROR_TYPES:
-                log.warning(
-                    "receiver %s on %s: detailedErrorCode=%s reason=%s itemId=%s",
-                    data.get("type"),
-                    device_id,
-                    data.get("detailedErrorCode"),
-                    data.get("reason"),
-                    data.get("itemId"),
-                )
+                key = tuple(data.get(k) for k in ("type", "detailedErrorCode", "reason", "itemId", "requestId"))
+                now = time.monotonic()
+                last = _last_receiver_error.get(device_id)
+                if last is not None and last[0] == key and now - last[1] < RECEIVER_ERROR_DEDUP_SECONDS:
+                    log.debug("receiver %s on %s repeated", data.get("type"), who)
+                else:
+                    _last_receiver_error[device_id] = (key, now)
+                    log.warning(
+                        "receiver %s on %s: detailedErrorCode=%s reason=%s itemId=%s",
+                        data.get("type"),
+                        who,
+                        describe_error_code(data.get("detailedErrorCode")),
+                        data.get("reason"),
+                        data.get("itemId"),
+                    )
         return orig(message, data)
 
     receive_message._cw_logged = True  # type: ignore[attr-defined]
@@ -217,7 +318,8 @@ class _Listener:
     def load_media_failed(self, queue_item_id: int, error_code: int) -> None:
         # Every LOAD we send waits for its answer and raises CastError (→ 502 + toast):
         # reporting it here as well would only duplicate the toast.
-        log.debug("LOAD failed on %s (item %s, error %s)", self.device_id, queue_item_id, error_code)
+        log.debug("LOAD failed on %s (item %s, error %s)", self.driver._label(self.device_id), queue_item_id,
+                  error_code)
 
     # ConnectionStatusListener
     def new_connection_status(self, status: Any) -> None:
@@ -250,6 +352,17 @@ class PyChromecastDriver:
         # (media session, tracks list, active ids list) last read from pychromecast's
         # MediaStatus: it keeps both lists when a new media's status has no "tracks".
         self._media_seen: dict[str, tuple[Any, Any, Any]] = {}
+        # content URL last named in the media status log, per device (named once per media)
+        self._logged_content: dict[str, str | None] = {}
+
+    def _label(self, device_id: str) -> str:
+        """``"<friendly name>" (<id[:8]>)`` for the log."""
+        name = getattr(self._casts.get(device_id), "name", None)
+        if not name and device_id in self._manual:
+            name = self._manual[device_id].name
+        if not name and device_id in self._known_info:
+            name = getattr(self._known_info[device_id], "friendly_name", None)
+        return device_label(name, device_id)
 
     # ------------------------------------------------------------ plumbing
     def set_listener(self, listener: DriverListener) -> None:
@@ -479,11 +592,11 @@ class PyChromecastDriver:
         dmr = DefaultMediaReceiverController()
         cast.register_handler(dmr)
         self._dmr[device_id] = dmr
-        log_receiver_errors(dmr, device_id)
-        log_receiver_errors(cast.media_controller, device_id)
         listener = _Listener(self, device_id, cast)
         cast.register_status_listener(listener)
         cast.media_controller.register_status_listener(listener)
+        # one controller only: every handler of the media namespace gets every message
+        log_receiver_errors(cast.media_controller, device_id, self._label(device_id))
         cast.register_connection_listener(listener)
         # No launch-error listener on purpose: pychromecast retries a LAUNCH_CANCELLED
         # (another app still closing) only when none is registered, and a launch that
@@ -502,9 +615,12 @@ class PyChromecastDriver:
                 }
             )
             self._emit("devices")
+        info = getattr(cast, "cast_info", None)
+        log.info("connected to %s at %s:%s", self._label(device_id), getattr(info, "host", "?"),
+                 getattr(info, "port", "?"))
         # Sync with whatever is already playing *before* the service decides whether to
         # show the idle image (the receiver answers asynchronously).
-        ms = await asyncio.to_thread(_fetch_media_status, cast, STATUS_TIMEOUT)
+        ms =await asyncio.to_thread(_fetch_media_status, cast, STATUS_TIMEOUT)
         if ms is not None:
             self._on_media_status(device_id, ms)
         self._emit("status", device_id)
@@ -549,12 +665,12 @@ class PyChromecastDriver:
             try:
                 cast = await self._open_async(device_id)
             except CastError as exc:
-                log.debug("reconnect to %s failed: %s", device_id, exc)
+                log.debug("reconnect to %s failed: %s", self._label(device_id), exc)
                 return False
             if not self._waiting_reconnect(device_id, old):  # pychromecast made it meanwhile
                 await asyncio.to_thread(_safe_disconnect, cast, 0)
                 return True
-            log.info("Chromecast %s is back: replacing the reconnecting session", device_id)
+            log.info("%s is back: replacing the reconnecting session", self._label(device_id))
             await self._attach(device_id, cast)  # the old cast's listener is now stale
             await asyncio.to_thread(_safe_disconnect, old, 0)
             return True
@@ -562,10 +678,12 @@ class PyChromecastDriver:
     async def disconnect(self, device_id: str) -> None:
         self._stop_watch(device_id)
         async with self._conn_lock(device_id):
+            label = self._label(device_id)
             cast = self._casts.pop(device_id, None)
             self._dmr.pop(device_id, None)
             self._status.pop(device_id, None)
             if cast is not None:
+                log.info("disconnected from %s", label)
                 await asyncio.to_thread(_safe_disconnect, cast, 3)
         self._emit("status", device_id)
 
@@ -588,6 +706,7 @@ class PyChromecastDriver:
         """pychromecast gave up reconnecting: forget the session (event loop thread)."""
         if self._casts.get(device_id) is not cast:
             return
+        log.warning("%s: pychromecast gave up reconnecting, session dropped", self._label(device_id))
         self._stop_watch(device_id)
         self._casts.pop(device_id, None)
         self._dmr.pop(device_id, None)
@@ -617,7 +736,12 @@ class PyChromecastDriver:
         if not st:
             return
         value = status.status
+        was = st.connected
         st.connected = value == "CONNECTED"
+        if was and not st.connected and value not in SESSION_OVER:
+            log.warning("connection to %s lost (%s), reconnecting", self._label(device_id), value)
+        elif st.connected and not was:
+            log.info("connection to %s restored", self._label(device_id))
         if value in SESSION_OVER and self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._drop_session, device_id, cast)
             return
@@ -634,14 +758,17 @@ class PyChromecastDriver:
         prev_state, prev_reason = st.player_state, st.idle_reason
         state = ms.player_state if ms.player_state in ("IDLE", "PLAYING", "PAUSED", "BUFFERING") else "UNKNOWN"
         if (state, ms.idle_reason) != (prev_state, prev_reason):
+            details = f" idleReason={ms.idle_reason}" if state == "IDLE" and ms.idle_reason else ""
+            if ms.content_id and ms.content_id != self._logged_content.get(device_id):
+                self._logged_content[device_id] = ms.content_id
+                details += f" content={_short(ms.content_id)}"
             log.log(
                 logging.WARNING if ms.idle_reason == "ERROR" else logging.INFO,
-                "media status %s: %s -> %s idleReason=%s content=%s",
-                device_id,
+                "media status %s: %s -> %s%s",
+                self._label(device_id),
                 prev_state,
                 state,
-                ms.idle_reason,
-                _short(ms.content_id),
+                details,
             )
         st.player_state = state
         st.idle_reason = ms.idle_reason
@@ -747,7 +874,7 @@ class PyChromecastDriver:
             raise CastError(f"Device {device_id} not connected")
         kwargs = self.build_play_kwargs(media)
         timeout = media.load_timeout or LOAD_TIMEOUT
-        log.info("LOAD %s: %s", device_id, load_summary(media, kwargs))
+        log.info("LOAD on %s: %s", self._label(device_id), format_summary(load_summary(media, kwargs)))
 
         def _play() -> None:
             # DefaultMediaReceiverController (app_must_match=True) launches the Default

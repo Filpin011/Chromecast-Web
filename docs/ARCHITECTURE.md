@@ -69,6 +69,30 @@ docker-compose.yml  for Coolify (network_mode: host, volume for /data)
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / ffprobe next to it | used by `/restream` |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | comma-separated extra origins (dev only; prod is same-origin) |
 | `CORS_ORIGIN_REGEX` | private-LAN hosts (localhost, 10/8, 172.16/12, 192.168/16, `*.local`), any port | so `make dev` works from a phone at `http://<lan-ip>:3000`; set `""` to disable |
+| `LOG_LEVEL` | `info` | level of the app loggers (`debug` adds one line per proxied segment/playlist, every access-log line and the shortened httpx request lines) |
+
+### Logging
+
+`app/logging_setup.py` (called by `create_app`, so the same for `python -m app` and `uvicorn
+app.main:app`) gives uvicorn and the app one format: `2026-11-21 16:21:34 INFO    proxy.stats: ...`.
+
+- Conventions: `logging.getLogger(__name__)`, one line per event, `key=value` details, a device
+  written as `"<friendly name>" (<id[:8]>)`. INFO = state changes a user would care about,
+  WARNING = something went wrong, DEBUG = per-request detail.
+- URLs are always shortened with `short_url` (host + last path segment, no query); a proxy token
+  is printed as its first 6 characters. Tokens, base64 `/proxy` paths and cookies never appear in full.
+- Access log: successful `GET`/`HEAD`/`OPTIONS` are hidden below DEBUG (media fetched by the
+  Chromecast, frontend assets, polling); mutations and every 4xx/5xx stay. httpx per-request
+  lines and pychromecast's INFO chatter only appear with `LOG_LEVEL=debug`.
+- `/proxy` (`services/proxy/stats.py`): DEBUG line per segment (status, bytes, ttfb, total) and
+  per media playlist (media sequence, segment count). INFO for a slow segment (> 5 s or longer than
+  its EXTINF duration), a live playlist whose media sequence has not moved for 3 target durations
+  (and when it moves again), and a summary per token at most every 60 s. WARNING when the upstream
+  returns >= 400, fails mid-body, or the client (the receiver) gives up on a segment: uvicorn
+  logs the 200 when the headers go out, so a body that stalls is only visible here.
+- pychromecast driver: each receiver `ERROR`/`LOAD_FAILED` once, with the CAF `DetailedErrorCode`
+  name (`310 network error (3xx)` for a code not in the published list); media status transitions
+  with the idle reason and the content URL (once per media).
 
 ## Data models (JSON, snake_case)
 
