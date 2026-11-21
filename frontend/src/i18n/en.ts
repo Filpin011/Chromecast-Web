@@ -390,6 +390,11 @@ export const en = {
   "preview.mute": "Mute preview",
   // queue
   "queue.drag": "Drag {name}",
+  "queue.dragHint": "Drag, or use the up and down arrow keys, to move it",
+  "queue.moveUp": "Move up",
+  "queue.moveDown": "Move down",
+  "queue.remove": "Remove",
+  "queue.movedTo": "{name} moved to position {position}",
   "queue.reorderFailed": "Couldn’t reorder",
   "queue.removeFailed": "Couldn’t remove",
   "queue.empty": "The queue is empty. Use “Add to queue” on anything.",

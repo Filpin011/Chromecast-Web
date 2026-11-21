@@ -386,6 +386,11 @@ export const it: Messages = {
   "preview.mute": "Disattiva audio anteprima",
   // queue
   "queue.drag": "Trascina {name}",
+  "queue.dragHint": "Trascinalo, o usa i tasti freccia su e giù, per spostarlo",
+  "queue.moveUp": "Sposta su",
+  "queue.moveDown": "Sposta giù",
+  "queue.remove": "Rimuovi",
+  "queue.movedTo": "{name} spostato in posizione {position}",
   "queue.reorderFailed": "Riordino non riuscito",
   "queue.removeFailed": "Rimozione non riuscita",
   "queue.empty": "La coda è vuota. Usa “Aggiungi alla coda” da qualsiasi contenuto.",
