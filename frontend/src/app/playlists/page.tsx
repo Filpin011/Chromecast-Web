@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
+import { IconTile } from "@/components/common/icon-tile";
 import { RowMenu } from "@/components/common/list-row";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { ImportPlaylistDialog } from "@/components/playlists/import-dialog";
@@ -61,9 +62,7 @@ export default function PlaylistsPage() {
                 className="flex min-w-0 items-center gap-1 rounded-2xl border bg-card pr-1 shadow-sm transition hover:border-primary/40"
               >
                 <Link href={`/playlists/view/?id=${encodeURIComponent(p.id)}`} className="flex min-h-22 min-w-0 flex-1 items-center gap-3 p-4">
-                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary">
-                    <ListVideo className="size-6" />
-                  </div>
+                  <IconTile icon={ListVideo} />
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{p.name}</p>
                     <p className="text-sm text-muted-foreground">

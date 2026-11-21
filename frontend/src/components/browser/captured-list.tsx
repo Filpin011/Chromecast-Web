@@ -2,6 +2,7 @@
 
 import { Cast, ListPlus, MonitorPlay, Play, Radar, Star } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { EmptyState } from "@/components/common/empty-state";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
 import type { CapturedStream } from "@/lib/api/types";
@@ -34,16 +35,7 @@ export function CapturedList({
   const t = useT();
   if (!streams.length) {
     return (
-      <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-sm text-muted-foreground">
-        <div className="relative grid size-14 place-items-center rounded-2xl bg-muted">
-          <Radar className="size-6 animate-pulse" />
-        </div>
-        <p>
-          {t("captured.listening")}
-          <br />
-          {t("captured.listeningHint")}
-        </p>
-      </div>
+      <EmptyState icon={Radar} iconClassName="animate-pulse" title={t("captured.listening")} description={t("captured.listeningHint")} className="py-10" />
     );
   }
   return (
