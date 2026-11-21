@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, ImageIcon, Info, Languages, Loader2, MonitorSmartphone, Network, Palette, ShieldCheck, Tv, type LucideIcon } from "lucide-react";
+import { Check, ImageIcon, Info, Languages, MonitorSmartphone, Network, Palette, ShieldCheck, Tv, type LucideIcon } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/app/theme-toggle";
@@ -140,7 +141,7 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title={t("settings.title")}
-        actions={update.isPending ? <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label={t("common.saving")} /> : null}
+        actions={update.isPending ? <Spinner className="size-5 text-muted-foreground" aria-label={t("common.saving")} /> : null}
       />
       <PageBody className="space-y-6 pt-2">
         <Group title={t("settings.device")} icon={Tv}>

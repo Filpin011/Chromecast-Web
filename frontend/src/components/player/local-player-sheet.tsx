@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Cast, Check, Loader2, Maximize, PictureInPicture2, RotateCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Cast, Check, Maximize, PictureInPicture2, RotateCw, Settings2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MediaOverlay } from "@/components/common/media-overlay";
 import { DevicePickerSheet } from "@/components/devices/device-picker-sheet";
@@ -309,7 +310,7 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
           <div className={cn("grid gap-2", media.onCast ? "grid-cols-[1fr_auto_auto]" : "grid-cols-2")}>
             {media.onCast && (
               <Button size="lg" className="min-w-0 gap-2" onClick={sendToTv} disabled={sending} aria-busy={sending || undefined}>
-                {send.state.phase === "sending" ? <Loader2 className="size-5 animate-spin" /> : <Cast className="size-5" />}
+                {send.state.phase === "sending" ? <Spinner className="size-5" /> : <Cast className="size-5" />}
                 <span className="truncate">{t("localPlayer.sendToTv")}</span>
               </Button>
             )}
@@ -353,7 +354,7 @@ function SendStatus({ state, device, error }: { state: SendState; device: string
     <div role="status" aria-live="polite" className="-mt-2 empty:hidden">
       {state.phase === "sending" ? (
         <p className="flex items-center justify-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-medium text-primary">
-          <Loader2 className="size-4 shrink-0 animate-spin" />
+          <Spinner className="shrink-0" />
           <span className="truncate">{t("localPlayer.sendingTo", { device })}</span>
         </p>
       ) : error ? (

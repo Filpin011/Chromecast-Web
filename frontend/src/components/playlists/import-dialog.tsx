@@ -1,6 +1,7 @@
 "use client";
 
-import { FileUp, Link2, Loader2 } from "lucide-react";
+import { FileUp, Link2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useRef, useState, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
@@ -110,7 +111,7 @@ export function ImportPlaylistDialog({
             className="w-full"
             disabled={mutation.isPending || (tab === "url" ? !url.trim() : !file)}
           >
-            {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
+            {mutation.isPending && <Spinner />}
             {t("playlists.importShort")}
           </Button>
         </form>

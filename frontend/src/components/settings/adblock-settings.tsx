@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw, X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
@@ -131,7 +132,7 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
             </p>
           </div>
           <Button variant="secondary" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-            {refresh.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {refresh.isPending ? <Spinner /> : <RefreshCw className="size-4" />}
             {t("playlists.refresh")}
           </Button>
         </div>

@@ -1,4 +1,5 @@
-import { Loader2, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ export function MediaOverlay({
       )}
     >
       <div className={cn("flex flex-col items-center", sm ? "gap-2" : "gap-3")}>
-        {spinner ? <Loader2 className={cn(iconClass, "animate-spin")} /> : Icon && <Icon className={iconClass} />}
+        {spinner ? <Spinner className={iconClass} /> : Icon && <Icon className={iconClass} />}
         {message}
         {action &&
           (sm ? (

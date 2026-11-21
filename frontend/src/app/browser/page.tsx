@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -137,7 +137,7 @@ function BrowserPageInner() {
       {opening && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
-            <Loader2 className="size-8 animate-spin text-primary" />
+            <Spinner className="size-8 text-primary" />
             {t("browser.opening")}
           </div>
         </div>

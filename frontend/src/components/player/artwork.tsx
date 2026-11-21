@@ -1,5 +1,5 @@
-import { Loader2 } from "lucide-react";
 import { Thumb } from "@/components/common/thumb";
+import { Spinner } from "@/components/ui/spinner";
 import type { PlayerState } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +38,7 @@ export function Artwork({
           loading ? "opacity-100" : "opacity-0",
         )}
       >
-        {loading && <Loader2 className={cn("animate-spin text-white drop-shadow", spinnerClassName)} />}
+        {loading && <Spinner className={cn("text-white drop-shadow", spinnerClassName)} />}
       </div>
     </div>
   );
