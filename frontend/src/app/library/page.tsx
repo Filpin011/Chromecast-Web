@@ -97,7 +97,7 @@ function LibraryInner() {
                 tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
-              <Icon className="size-4 shrink-0" /> <span className="truncate">{label}</span>
+              <Icon className="size-4 shrink-0 max-[420px]:hidden" /> <span className="truncate">{label}</span>
               {count ? <span className="text-xs text-muted-foreground tabular-nums">{count}</span> : null}
             </button>
           ))}
