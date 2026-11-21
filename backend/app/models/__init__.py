@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -207,6 +209,18 @@ class SettingsUpdate(Model):
     popup_policy: PopupPolicy | None = None
     popup_blocked_hosts: list[str] | None = None
 
+    @field_validator("idle_image_url", "public_base_url")
+    @classmethod
+    def _http_url(cls, v: str | None) -> str | None:
+        # the Chromecast fetches both: anything but an absolute http(s) URL can never work ("" = unset)
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        parts = urlsplit(v)
+        if parts.scheme.lower() not in ("http", "https") or not parts.hostname or any(c.isspace() for c in v):
+            raise ValueError("must be an http(s) URL")
+        return v
+
 
 class AppState(Model):
     devices: list[Device] = Field(default_factory=list)
@@ -221,8 +235,17 @@ class AppState(Model):
 
 class ManualDeviceIn(Model):
     host: str = Field(min_length=1)
-    port: int = 8009
+    port: int = Field(8009, ge=1, le=65535)
     name: str | None = None
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        # a hostname, IPv4 or (bracketed) IPv6 address: the device id is "manual-<host>"
+        v = v.strip()
+        if not re.fullmatch(r"[A-Za-z0-9.\-]+|\[?[0-9A-Fa-f:.]+\]?", v):
+            raise ValueError("must be a host name or an IP address")
+        return v
 
 
 class ResolveIn(Model):

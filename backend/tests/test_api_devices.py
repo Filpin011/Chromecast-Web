@@ -29,6 +29,13 @@ def test_manual_device_lifecycle(client):
     assert client.delete(f"/api/devices/{dev['id']}").status_code == 204
     assert client.delete(f"/api/devices/{dev['id']}").json()["code"] == "device_not_found"
     assert client.post("/api/devices/manual", json={"host": ""}).status_code == 422
+    for body in ({"host": "  "}, {"host": "foo bar"}, {"host": "http://10.0.0.5/"}, {"host": "10.0.0.5", "port": 0},
+                 {"host": "10.0.0.5", "port": 70000}):
+        r = client.post("/api/devices/manual", json=body)
+        assert r.status_code == 422 and r.json()["code"] == "validation_error", body
+    for host in (" chromecast.lan ", "[fe80::1]", "fe80::1"):
+        r = client.post("/api/devices/manual", json={"host": host, "port": 8009})
+        assert r.status_code == 201 and r.json()["host"] == host.strip(), host
 
 
 def test_connect_disconnect(client):
