@@ -230,7 +230,7 @@ default device, idle image, force proxy, ad blocking, popup policy — is set in
 | `FFMPEG_PATH` | `ffmpeg` | FFmpeg binary used by `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` next to `FFMPEG_PATH` | FFprobe binary (codec detection). |
 | `BROWSER_MAX_SESSIONS` | `2` | Concurrent remote-browser sessions. |
-| `BROWSER_IDLE_TIMEOUT` | `600` | Seconds before an unwatched remote-browser session is closed. |
+| `BROWSER_IDLE_TIMEOUT` | `180` | Seconds before an unwatched remote-browser session is closed (Chromium itself stops 60 s after the last one and restarts on demand). |
 | `WEBPAGE_TIMEOUT` | `20` | Seconds spent looking for a stream in a web page. |
 | `RESTREAM_IDLE_TIMEOUT` | `60` | Seconds without requests before an FFmpeg job is cleaned up. |
 | `DISCOVERY_SECONDS` | `5` | Length of an mDNS discovery scan. |
@@ -245,7 +245,10 @@ default device, idle image, force proxy, ad blocking, popup policy — is set in
   page needs clicks (cookie banners, "play" overlays), the error card offers **Open in the interactive browser**.
 - **Remote browser**: choose the *Mobile* or *Desktop* mode; the page is drawn 1:1 on your screen. The keyboard button
   sends text to the page. When a stream is detected, pick the best one in the panel (the highest quality and HLS
-  masters come first; ads and short pre-rolls are ranked last).
+  masters come first; ads and short pre-rolls are ranked last). The page is drawn at your screen's density (sharp on
+  retina phones/tablets) whenever it is still, and at a lighter resolution while it scrolls or animates.
+- **Watching on the phone first**: in the built-in player, **Cast** keeps the video playing while you pick the TV;
+  the player closes by itself once the Chromecast is actually playing (or stays open with an error if it can't).
 - **Ad blocking**: the shield in the top bar shows how many requests were blocked and turns blocking off for the
   current site. Lists refresh every 24 h (*Settings → Browser & ads*).
 - **Popups**: the default policy is *Ask*; switch to *Block* or *Allow* in Settings. *Always block for this site*

@@ -238,7 +238,7 @@ nell'app, in **Impostazioni**.
 | `FFMPEG_PATH` | `ffmpeg` | Binario FFmpeg usato da `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` accanto a `FFMPEG_PATH` | Binario FFprobe (riconoscimento codec). |
 | `BROWSER_MAX_SESSIONS` | `2` | Sessioni contemporanee del browser remoto. |
-| `BROWSER_IDLE_TIMEOUT` | `600` | Secondi dopo cui una sessione del browser remoto non guardata viene chiusa. |
+| `BROWSER_IDLE_TIMEOUT` | `180` | Secondi dopo cui una sessione del browser remoto non guardata viene chiusa (Chromium si spegne 60 s dopo l'ultima e si riaccende quando serve). |
 | `WEBPAGE_TIMEOUT` | `20` | Secondi dedicati alla ricerca di uno stream in una pagina web. |
 | `RESTREAM_IDLE_TIMEOUT` | `60` | Secondi senza richieste prima che un job FFmpeg venga ripulito. |
 | `DISCOVERY_SECONDS` | `5` | Durata di una scansione mDNS. |
@@ -254,7 +254,11 @@ nell'app, in **Impostazioni**.
   propone **Apri nel browser interattivo**.
 - **Browser remoto**: scegli la modalità *Mobile* o *Desktop*; la pagina viene disegnata 1:1 sul tuo schermo. Il
   pulsante tastiera invia testo alla pagina. Quando viene rilevato uno stream scegli il migliore nel pannello (prima
-  la qualità più alta e i master HLS; pubblicità e pre-roll brevi in fondo).
+  la qualità più alta e i master HLS; pubblicità e pre-roll brevi in fondo). Quando la pagina è ferma viene disegnata
+  alla densità del tuo schermo (nitida su telefoni e tablet retina), mentre scorre o si anima a una risoluzione più
+  leggera.
+- **Guardare prima sul telefono**: nel player integrato, **Trasmetti** lascia andare il video mentre scegli la TV; il
+  player si chiude da solo quando la Chromecast sta davvero riproducendo (o resta aperto con un errore se non ci riesce).
 - **Blocco pubblicità**: lo scudo nella barra in alto mostra quante richieste sono state bloccate e disattiva il
   blocco per il sito corrente. Le liste si aggiornano ogni 24 ore (*Impostazioni → Browser e pubblicità*).
 - **Popup**: la regola predefinita è *Chiedi*; puoi passare a *Blocca* o *Consenti* nelle Impostazioni. *Blocca

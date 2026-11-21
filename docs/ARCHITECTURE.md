@@ -494,7 +494,7 @@ interface BrowserSession {
   id: string;
   url: string;                        // current page URL
   title: string | null;
-  viewport: { width: number; height: number };
+  viewport: { width: number; height: number; scale: number };   // scale: render density 1..2 (see below)
   captured: CapturedStream[];
   created_at: string;
 }
@@ -504,7 +504,7 @@ REST:
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| POST | `/api/browser/sessions` | `{url, viewport?: {width,height}}` (default 390x844 mobile, or 1280x720 desktop) | `BrowserSession` |
+| POST | `/api/browser/sessions` | `{url, viewport?: {width,height,scale?}}` (default 390x844 mobile, or 1280x720 desktop; `scale` 1..2, default 1) | `BrowserSession` |
 | GET | `/api/browser/sessions` | | `BrowserSession[]` |
 | GET | `/api/browser/sessions/{id}` | | `BrowserSession` |
 | POST | `/api/browser/sessions/{id}/navigate` | `{url}` or `{action: "back"\|"forward"\|"reload"}` | `BrowserSession` |
@@ -526,7 +526,8 @@ navigations keep it. The manual `DELETE …/captured` empties it too and forgets
 fetched afterwards is listed again; child playlists of known masters stay hidden).
 
 Max 2 concurrent sessions (a 3rd create first reaps idle ones, else 429 `browser_limit`); sessions with no
-connected `/ws/browser` viewer and no input for 10 minutes are closed. Casting/bookmarking a captured stream records
+connected `/ws/browser` viewer and no input for 3 minutes (`BROWSER_IDLE_TIMEOUT`, 180 s) are closed. Chromium itself is
+closed 60 s after the last context (session or page probe) closes and launched again on the next request (~0.6-2 s). Casting/bookmarking a captured stream records
 the **page URL** (`source_kind: "webpage"`) in history/favorites, because captured stream URLs carry expiring
 tokens/cookies; the queue keeps the already-resolved media (with headers) for playback.
 
@@ -552,7 +553,20 @@ type BrowserClientMsg =
   | { type: "mousemove"; x: number; y: number };
 ```
 
-Frames come from CDP `Page.startScreencast` (JPEG, quality ~60, everyNthFrame tuned) — fallback to periodic screenshots.
+Frames come from CDP `Page.startScreencast` (JPEG) — fallback to periodic screenshots.
+- **Sharpness**: the client sends `viewport.scale`, the device pixels the page occupies per page CSS pixel
+  (`devicePixelRatio` x shown width / viewport width, capped at 2, 0.25 steps). Chromium is launched with
+  `--force-device-scale-factor=2` (headless screencast ignores a context's `device_scale_factor`), and the
+  screencast's `maxWidth`/`maxHeight` = viewport x scale. Quality 70 at 1x, 62 above.
+- **Adaptive resolution**: while the page keeps changing (>= 6 frames in 1 s: scrolling, animations, a playing
+  video) the screencast runs at 1x; after 0.5 s without frames it is restarted at the viewer's scale, which emits one
+  sharp frame. A fixed 2x stream cost ~4 CPU cores on a busy news page; adaptive ~1 core (measured).
+- **Pacing**: Chromium sends a new frame per ack. A frame is acked once every viewer's WebSocket was sent it (or after
+  1 s), one ack per 1/30 s: frames follow the phone's link/decoder and never exceed 30 fps (unpaced: 60 fps x ~100 KB
+  on animated pages).
+- **Input** runs in an ordered per-session worker, off the WebSocket loop; consecutive queued `scroll`s are merged
+  (dx/dy summed) and `mousemove`s collapse to the last; a scroll is one CDP `Input.dispatchMouseEvent` (`mouseWheel`).
+  After a 1 s drag the page catches up in ~0.04 s (was ~1 s). The user-gesture window opens when a tap arrives.
 While a captured stream's thumbnail is taken (clipped `page.screenshot`), Chromium emits screencast frames sized like
 the clip: those are dropped, and the screencast is restarted afterwards so viewers get a fresh full-viewport frame
 (a static page sends none on its own).
@@ -702,7 +716,8 @@ ad popups and a "play" click. Therefore:
 - Look like a normal browser: realistic desktop/mobile User-Agent and headers, no `HeadlessChrome` brand in the
   `Sec-CH-UA` client hints / `navigator.userAgentData` (the full Chromium in new headless mode, `channel="chromium"`,
   not chromium-headless-shell), `navigator.webdriver` hidden, locale
-  `it-IT`, timezone `Europe/Rome`, viewport set; launch Chromium with sane flags (`--autoplay-policy=no-user-gesture-required`).
+  `it-IT`, timezone `Europe/Rome`, viewport set; launch Chromium with sane flags (`--autoplay-policy=no-user-gesture-required`,
+  background services off, `--mute-audio`: the screencast has no sound, decoding is untouched).
 - Capture **request headers actually sent** (Referer/Origin of the iframe, Cookie, UA) per stream — iframe-origin
   Referer is usually what the CDN checks — and replay them through the proxy when casting.
 - Ranking: prefer HLS master playlists > media playlists > progressive; ignore ad domains/very short VOD (pre-rolls);
