@@ -327,6 +327,7 @@ class Health(Model):
     status: Literal["ok"] = "ok"
     driver: str
     version: str
+    local_enabled: bool = False  # MEDIA_ROOT set: the Files section (/api/local) is available
 
 
 # ---------------------------------------------------------------- browser

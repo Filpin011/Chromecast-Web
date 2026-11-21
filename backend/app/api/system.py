@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 
 @router.get("/health", response_model=m.Health)
 async def health(s: Services = Depends(services)) -> m.Health:
-    return m.Health(driver=s.cast.driver.name, version=__version__)
+    return m.Health(driver=s.cast.driver.name, version=__version__, local_enabled=s.config.media_root is not None)
 
 
 @router.get("/state", response_model=m.AppState)

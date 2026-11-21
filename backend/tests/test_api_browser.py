@@ -102,11 +102,12 @@ def test_ws_unknown_session(client):
         assert ws.receive_json() == {"type": "closed"}
 
 
-def test_session_limit_via_api(client):
-    for _ in range(2):
-        assert client.post("/api/browser/sessions", json={"url": PAGE}).status_code == 201
-    r = client.post("/api/browser/sessions", json={"url": PAGE})
-    assert r.status_code == 429 and r.json()["code"] == "browser_limit"
+def test_session_limit_via_api_replaces_an_unwatched_session(client):
+    ids = [client.post("/api/browser/sessions", json={"url": PAGE}).json()["id"] for _ in range(2)]
+    r = client.post("/api/browser/sessions", json={"url": PAGE})  # nobody watches the first two
+    assert r.status_code == 201
+    left = {s["id"] for s in client.get("/api/browser/sessions").json()}
+    assert len(left) == 2 and ids[0] not in left
 
 
 def test_browser_queue_on_disconnected_device_starts_playback(client):

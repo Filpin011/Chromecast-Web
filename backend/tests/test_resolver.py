@@ -82,7 +82,7 @@ async def test_direct_hls_live_with_cors_not_proxied(http, tmp_path):
     assert m.cast_url == "https://cdn.example.com/live/master.m3u8"
     assert m.preview_url.startswith("/proxy/")  # browser preview needs same-origin
     assert m.source_kind == "direct"
-    assert m.title == "master"
+    assert m.title == "cdn.example.com"  # "live/master" says nothing: the host names the stream
 
 
 @respx.mock
@@ -154,7 +154,7 @@ async def test_input_with_kodi_headers(http, tmp_path):
     r = make(http, tmp_path)
     m = (await r.resolve(value)).media
     assert m.url == "https://cdn.example.com/ch/index.m3u8" and m.original_input == value
-    assert m.title == "index" and m.proxied
+    assert m.title == "ch" and m.proxied
     assert route.calls.last.request.headers["referer"] == "https://site.example/"
     assert route.calls.last.request.headers["user-agent"] == "VLC/3"
     tok = m.cast_url.split("/proxy/")[1].split("/")[0]

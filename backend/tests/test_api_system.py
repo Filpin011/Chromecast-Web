@@ -10,7 +10,9 @@ from tests.conftest import player
 
 
 def test_health_and_state(client):
-    assert client.get("/api/health").json() == {"status": "ok", "driver": "fake", "version": __version__}
+    health = client.get("/api/health").json()
+    assert health == {"status": "ok", "driver": "fake", "version": __version__, "local_enabled": health["local_enabled"]}
+    assert isinstance(health["local_enabled"], bool)
     assert re.fullmatch(r"\d+\.\d+\.\d+(?:[-+].+)?", __version__)
     st = client.get("/api/state").json()
     assert {d["name"] for d in st["devices"]} >= {"Chromecast Ultra (fake)"}

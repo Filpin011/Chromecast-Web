@@ -173,12 +173,20 @@ def _connect_failed(url: str, exc: Exception) -> AppError:
     )
 
 
+# File names that say nothing about the stream: the folder above names it instead
+# (``/lo-fi-lounge/index.m3u8`` -> "lo-fi-lounge").
+GENERIC_NAMES = {"index", "master", "playlist", "chunklist", "manifest", "stream", "live", "main", "video", "mono"}
+
+
 def title_from_url(url: str) -> str:
     parts = urlsplit(url)
-    name = parts.path.rstrip("/").rsplit("/", 1)[-1]
-    if name and "." in name:
-        name = name.rsplit(".", 1)[0]
-    return name or parts.hostname or url
+    segments = [p for p in parts.path.split("/") if p]
+    if segments and "." in segments[-1]:
+        segments[-1] = segments[-1].rsplit(".", 1)[0]
+    for name in reversed(segments):  # the last segment that isn't a generic name
+        if name and name.lower().split("_")[0].split("-")[0] not in GENERIC_NAMES:
+            return name
+    return segments[-1] if segments and not parts.hostname else (parts.hostname or url)
 
 
 def _allows_origin(headers: httpx.Headers, origin: str) -> bool:

@@ -1143,6 +1143,15 @@ class BrowserManager:
                 # free idle ones first
                 await self.reap_idle()
             if len(self.sessions) >= self.max_sessions:
+                # then the oldest one nobody is watching (its tab was closed / the phone slept): a session
+                # someone left must not block a new one for BROWSER_IDLE_TIMEOUT
+                unwatched = sorted(
+                    (x for x in self.sessions.values() if not x.has_subscribers), key=lambda x: x.last_activity
+                )
+                if unwatched:
+                    log.info("closing unwatched browser session %s to open a new one", unwatched[0].id)
+                    await self.close(unwatched[0].id)
+            if len(self.sessions) >= self.max_sessions:
                 raise AppError(
                     429,
                     f"Too many browser sessions (max {self.max_sessions}): close one first",

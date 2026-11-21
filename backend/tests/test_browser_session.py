@@ -176,12 +176,25 @@ async def test_session_limit_and_idle_reaping():
     b.last_activity = time.monotonic() - 1
     c = await mgr.create(PAGE)  # a reaped to make room
     assert set(mgr.sessions) == {b.id, c.id}
+    qc = c.subscribe()  # both watched: no room
     with pytest.raises(AppError) as e:
         await mgr.create(PAGE)
     assert e.value.code == "browser_limit" and e.value.status_code == 429
     b.unsubscribe(q)
+    c.unsubscribe(qc)
     b.last_activity = c.last_activity = time.monotonic() - 1
     assert await mgr.reap_idle() == 2 and mgr.sessions == {}
+
+
+async def test_unwatched_session_makes_room_before_its_idle_timeout():
+    mgr = manager(site(), max_sessions=2, idle_timeout=600)
+    a = await mgr.create(PAGE)  # left behind: its tab was closed (no viewer), not idle long enough
+    b = await mgr.create(PAGE)
+    qb = b.subscribe()
+    c = await mgr.create(PAGE)
+    assert set(mgr.sessions) == {b.id, c.id} and a.closed
+    b.unsubscribe(qb)
+    await mgr.shutdown()
 
 
 async def test_screenshot_fallback_when_cdp_fails():
