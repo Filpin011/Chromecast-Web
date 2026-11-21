@@ -7,7 +7,7 @@ import { LocalPlayerSheet } from "@/components/player/local-player-sheet";
 import { NowPlayingSheet } from "@/components/player/now-playing-sheet";
 import { isActivePlayback } from "@/hooks/use-app-state";
 import { useIsDesktop } from "@/hooks/use-media-query";
-import { selectActiveDevice, selectPlayer, useAppStore, type AppData } from "@/stores/app-store";
+import { selectActiveDevice, selectPendingLoad, selectPlayer, useAppStore, type AppData } from "@/stores/app-store";
 import { useUiStore } from "@/stores/ui-store";
 import { AppToaster } from "./app-toaster";
 import { BottomTabBar } from "./bottom-tab-bar";
@@ -16,8 +16,11 @@ import { SidebarNav } from "./sidebar-nav";
 
 /** Whether the active device has something worth a mini player (a boolean, so the shell doesn't re-render every tick). */
 export function selectHasMiniPlayer(s: AppData): boolean {
-  const p = selectPlayer(s, selectActiveDevice(s)?.id);
-  return !!p?.connected && (isActivePlayback(p) || p.showing_idle_image || p.queue.length > 0);
+  const id = selectActiveDevice(s)?.id;
+  const p = selectPlayer(s, id);
+  return (
+    !!p?.connected && (isActivePlayback(p) || p.showing_idle_image || p.queue.length > 0 || selectPendingLoad(s, id))
+  );
 }
 
 export function AppShell({ children }: { children: ReactNode }) {

@@ -18,7 +18,19 @@ export interface AppData {
   optimistic: Record<string, OptimisticPatch[]>;
   /** When true, the next snapshot is accepted regardless of version (server restart/reconnect). */
   acceptAnyVersion: boolean;
+  /** Casts this client started whose media has not reached PLAYING yet (optimistic loading indicator). */
+  pendingLoad: Record<string, PendingLoad>;
 }
+
+export interface PendingLoad {
+  /** Client clock (ms) when the cast was requested. */
+  since: number;
+  /** The play request answered: the next snapshot that shows playback (or IDLE) ends the wait. */
+  settled: boolean;
+}
+
+/** A pending load never outlives this (the indicator must not spin forever if a snapshot is missed). */
+export const PENDING_LOAD_MAX_MS = 90_000;
 
 export const initialAppData: AppData = {
   appState: null,
@@ -26,6 +38,7 @@ export const initialAppData: AppData = {
   receivedAt: {},
   optimistic: {},
   acceptAnyVersion: true,
+  pendingLoad: {},
 };
 
 /* ------------------------------------------------------------------ */
@@ -91,7 +104,57 @@ export function reduceSnapshot(prev: AppData, next: AppState, now: number): AppD
     players: sharePlayers(cur?.players, next.players),
   };
   const sameReceived = jsonEqual(prev.receivedAt, receivedAt);
-  return { ...prev, appState, receivedAt: sameReceived ? prev.receivedAt : receivedAt, acceptAnyVersion: false };
+  return {
+    ...prev,
+    appState,
+    receivedAt: sameReceived ? prev.receivedAt : receivedAt,
+    acceptAnyVersion: false,
+    pendingLoad: prunePendingLoad(prev.pendingLoad, next.players, now),
+  };
+}
+
+/** The cast's media has started (or ended): the optimistic loading indicator can go. */
+function loadSettled(p: PlayerState | undefined): boolean {
+  if (!p) return true;
+  if (p.recovering || p.player_state === "BUFFERING") return false;
+  return (
+    p.player_state === "IDLE" || ((p.player_state === "PLAYING" || p.player_state === "PAUSED") && !p.showing_idle_image)
+  );
+}
+
+function prunePendingLoad(
+  pending: Record<string, PendingLoad>,
+  players: Record<string, PlayerState>,
+  now: number,
+): Record<string, PendingLoad> {
+  const ids = Object.keys(pending);
+  if (!ids.length) return pending;
+  const out: Record<string, PendingLoad> = {};
+  for (const id of ids) {
+    const e = pending[id];
+    if (now - e.since > PENDING_LOAD_MAX_MS || (e.settled && loadSettled(players[id]))) continue;
+    out[id] = e;
+  }
+  return Object.keys(out).length === ids.length ? pending : out;
+}
+
+export function reduceStartPendingLoad(prev: AppData, deviceId: string, now: number): AppData {
+  return { ...prev, pendingLoad: { ...prev.pendingLoad, [deviceId]: { since: now, settled: false } } };
+}
+
+/** The play request answered with `player`: wait for the first snapshot showing playback, unless it already does. */
+export function reduceSettlePendingLoad(prev: AppData, deviceId: string, player: PlayerState | null): AppData {
+  const e = prev.pendingLoad[deviceId];
+  if (!e) return prev;
+  if (player && player.player_state !== "IDLE" && loadSettled(player)) return reduceClearPendingLoad(prev, deviceId);
+  return { ...prev, pendingLoad: { ...prev.pendingLoad, [deviceId]: { ...e, settled: true } } };
+}
+
+export function reduceClearPendingLoad(prev: AppData, deviceId: string): AppData {
+  if (!prev.pendingLoad[deviceId]) return prev;
+  const pendingLoad = { ...prev.pendingLoad };
+  delete pendingLoad[deviceId];
+  return { ...prev, pendingLoad };
 }
 
 /** Merge a PlayerState returned by a REST command into the current snapshot. */
@@ -139,6 +202,9 @@ export interface AppActions {
   setConnection: (s: SocketStatus) => void;
   /** Returns a revert function. */
   pushOptimistic: (deviceId: string, patch: Partial<PlayerState>) => () => void;
+  startPendingLoad: (deviceId: string) => void;
+  settlePendingLoad: (deviceId: string, player: PlayerState | null) => void;
+  clearPendingLoad: (deviceId: string) => void;
   reset: () => void;
 }
 
@@ -162,8 +228,15 @@ export const useAppStore = create<AppStore>()((set) => ({
     set((prev) => addOptimistic(prev, deviceId, { id, patch, at: Date.now() }));
     return () => set((prev) => removeOptimistic(prev, deviceId, id));
   },
+  startPendingLoad: (deviceId) => set((prev) => reduceStartPendingLoad(prev, deviceId, Date.now())),
+  settlePendingLoad: (deviceId, player) => set((prev) => reduceSettlePendingLoad(prev, deviceId, player)),
+  clearPendingLoad: (deviceId) => set((prev) => reduceClearPendingLoad(prev, deviceId)),
   reset: () => set({ ...initialAppData }),
 }));
+
+export function selectPendingLoad(s: AppData, deviceId: string | null | undefined): boolean {
+  return !!deviceId && !!s.pendingLoad[deviceId];
+}
 
 /* ------------------------------------------------------------------ */
 /* Selectors                                                           */

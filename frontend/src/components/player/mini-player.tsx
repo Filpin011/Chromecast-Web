@@ -7,9 +7,11 @@ import { useCommand } from "@/hooks/use-command";
 import { useNow } from "@/hooks/use-now";
 import { useT } from "@/i18n";
 import { extrapolatePosition, isLive } from "@/lib/player";
+import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 import { Artwork } from "./artwork";
 import { LiveBadge } from "./live-badge";
+import { loadingLabel, loadingTone, useLoadingStatus } from "./loading-status";
 import { PlayPauseButton } from "./play-pause-button";
 
 /** Thin progress line for VOD at the top of the mini player. */
@@ -30,6 +32,7 @@ export function MiniPlayer({ visible }: { visible: boolean }) {
   const open = useUiStore((s) => s.setNowPlayingOpen);
   const playing = player?.player_state === "PLAYING";
   const now = useNow(1000, visible && playing);
+  const loading = useLoadingStatus(device?.id, player);
 
   return (
     <AnimatePresence>
@@ -55,7 +58,7 @@ export function MiniPlayer({ visible }: { visible: boolean }) {
               onClick={() => open(true)}
               className="flex h-full min-w-0 flex-1 items-center gap-3 rounded-2xl pr-2 pl-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
-              <Artwork player={player} className="size-12 rounded-lg" />
+              <Artwork player={player} loading={!!loading} className="size-12 rounded-lg" />
               <span className="block min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold" data-testid="mini-title">
                   {player.showing_idle_image && !isActivePlayback(player) ? t("settings.idleImage") : (player.title ?? t("player.untitled"))}
@@ -66,13 +69,16 @@ export function MiniPlayer({ visible }: { visible: boolean }) {
                   ) : (
                     <Cast className="size-3 text-primary" />
                   )}
-                  <span className="truncate">{device.name}</span>
-                  {isActivePlayback(player) && isLive(player) && <LiveBadge className="h-4 px-1.5 text-[0.55rem]" />}
+                  {/* same line height either way: the status text swaps in for the device name */}
+                  <span role="status" aria-live="polite" data-testid="mini-status" className={cn("truncate", loading && loadingTone(loading))}>
+                    {loading ? loadingLabel(loading, t) : device.name}
+                  </span>
+                  {!loading && isActivePlayback(player) && isLive(player) && <LiveBadge className="h-4 px-1.5 text-[0.55rem]" />}
                 </span>
               </span>
             </button>
             {isActivePlayback(player) && (
-              <PlayPauseButton state={player.player_state} onToggle={() => run("toggle")} />
+              <PlayPauseButton state={loading ? "BUFFERING" : player.player_state} onToggle={() => run("toggle")} />
             )}
           </div>
         </motion.div>

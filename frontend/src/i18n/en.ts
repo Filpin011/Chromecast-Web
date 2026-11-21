@@ -247,6 +247,8 @@ export const en = {
   "toast.cast_error": "Chromecast error: {detail}",
   "toast.playback_failed": "Playback failed on the Chromecast: “{title}”",
   "toast.queue_skipped": "Skipping “{title}”: {reason}",
+  "toast.stream_reconnecting": "Stream interrupted, reconnecting… ({attempt}/{max})",
+  "toast.stream_restored": "Stream restored",
   // url
   "url.address": "Address",
   "url.addressEdit": "Address: {url}. Tap to edit",
@@ -281,6 +283,8 @@ export const en = {
   "player.tabPlayer": "Player",
   "player.nothingPlaying": "Nothing playing",
   "player.loading": "Loading…",
+  "player.stalled": "Slow connection, still loading…",
+  "player.reconnecting": "Reconnecting… attempt {attempt}/{max}",
   "player.shownOnTv": "Shown on the TV",
   "player.idle": "Idle",
   "player.goLive": "Go live",

@@ -243,6 +243,8 @@ export const it: Messages = {
   "toast.cast_error": "Errore del Chromecast: {detail}",
   "toast.playback_failed": "Riproduzione non riuscita sul Chromecast: “{title}”",
   "toast.queue_skipped": "Salto “{title}”: {reason}",
+  "toast.stream_reconnecting": "Stream interrotto, riconnessione… ({attempt}/{max})",
+  "toast.stream_restored": "Stream ripristinato",
   // url
   "url.address": "Indirizzo",
   "url.addressEdit": "Indirizzo: {url}. Tocca per modificare",
@@ -277,6 +279,8 @@ export const it: Messages = {
   "player.tabPlayer": "Player",
   "player.nothingPlaying": "Niente in riproduzione",
   "player.loading": "Caricamento…",
+  "player.stalled": "Connessione lenta, sto ancora caricando…",
+  "player.reconnecting": "Riconnessione… tentativo {attempt}/{max}",
   "player.shownOnTv": "Mostrata sul TV",
   "player.idle": "In attesa",
   "player.goLive": "Vai al live",

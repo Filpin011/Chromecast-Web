@@ -52,3 +52,33 @@ export function optimisticPatch(
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
 }
+
+/** Reload attempts the server makes for a dropped stream (backend `RECOVERY_BACKOFF`). */
+export const RECOVERY_MAX_ATTEMPTS = 3;
+
+/** Why the player shows its loading indicator (most important first). */
+export type LoadingStatus =
+  | { kind: "recovering"; attempt: number; max: number }
+  | { kind: "stalled" }
+  | { kind: "loading" };
+
+type LoadingFields = Pick<
+  PlayerState,
+  "connected" | "player_state" | "showing_idle_image" | "recovering" | "recovery_attempt" | "stalled_since"
+>;
+
+/**
+ * Loading indicator state for a player: the server reconnecting a dropped stream, a long BUFFERING
+ * (`stalled_since`), a plain BUFFERING, or `pending` = this client just asked to cast and the first
+ * PLAYING has not arrived yet (so the remote never looks dead while the LOAD runs).
+ */
+export function loadingStatus(p: LoadingFields | null | undefined, pending = false): LoadingStatus | null {
+  if (!p || !p.connected) return pending ? { kind: "loading" } : null;
+  if (p.recovering) {
+    return { kind: "recovering", attempt: Math.max(1, p.recovery_attempt), max: RECOVERY_MAX_ATTEMPTS };
+  }
+  const buffering = p.player_state === "BUFFERING" && !p.showing_idle_image;
+  if (buffering && p.stalled_since) return { kind: "stalled" };
+  if (buffering || pending) return { kind: "loading" };
+  return null;
+}

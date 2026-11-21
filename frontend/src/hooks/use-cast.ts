@@ -63,12 +63,16 @@ export function useCast() {
       if (!deviceId) return null;
       setBusy(true);
       haptic(12);
+      // optimistic loading indicator until the first PLAYING (an enqueue may not play at all)
+      const store = useAppStore.getState();
+      if (!enqueue) store.startPendingLoad(deviceId);
       const id = toast.loading(enqueue ? t("cast.adding") : t("cast.starting", { device: deviceName(deviceId) }), {
         description: label,
       });
       try {
         const p = await fn(deviceId);
         useAppStore.getState().applyPlayer(p);
+        if (!enqueue) useAppStore.getState().settlePendingLoad(deviceId, p);
         toast.success(enqueue ? t("cast.added") : t("cast.playingOn", { device: deviceName(deviceId) }), {
           id,
           description: p.title ?? label,
@@ -76,6 +80,7 @@ export function useCast() {
         qc.invalidateQueries({ queryKey: qk.history });
         return p;
       } catch (err) {
+        if (!enqueue) useAppStore.getState().clearPendingLoad(deviceId);
         toast.error(errorMessage(err, t("cast.failed")), { id, description: label });
         return null;
       } finally {

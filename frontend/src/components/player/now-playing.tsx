@@ -33,6 +33,7 @@ import { useAppStore } from "@/stores/app-store";
 import { openLocalPlayer } from "@/stores/local-player-store";
 import { Artwork } from "./artwork";
 import { LiveBadge } from "./live-badge";
+import { loadingLabel, loadingTone, useLoadingStatus } from "./loading-status";
 import { PlayPauseButton } from "./play-pause-button";
 import { QueueList } from "./queue-list";
 import { SeekBar } from "./seek-bar";
@@ -91,6 +92,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
   const now = useNow(500, active && player.player_state === "PLAYING");
   const position = extrapolatePosition(player, receivedAt, now);
   const canSeek = active && player.seekable;
+  const loading = useLoadingStatus(device.id, player);
 
   const setTracks = async (ids: number[]) => {
     haptic();
@@ -160,6 +162,8 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
             <Artwork
               player={player}
               eq={false}
+              loading={!!loading}
+              spinnerClassName="size-12"
               className={cn(
                 "aspect-video w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/40 transition-transform duration-500",
                 player.player_state === "PAUSED" && "scale-95",
@@ -173,8 +177,15 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
                 </h2>
                 {active && live && <LiveBadge className="mt-1" />}
               </div>
-              <p className="text-sm text-muted-foreground">
-                {active ? (player.player_state === "BUFFERING" ? t("player.loading") : player.app_name ?? "Default Media Receiver") : idleImage ? t("player.shownOnTv") : t("player.idle")}
+              {/* One line, always rendered: the loading / reconnecting text replaces the app name in place. */}
+              <p role="status" aria-live="polite" data-testid="player-status" className={cn("truncate text-sm", loadingTone(loading))}>
+                {loading
+                  ? loadingLabel(loading, t)
+                  : active
+                    ? (player.app_name ?? "Default Media Receiver")
+                    : idleImage
+                      ? t("player.shownOnTv")
+                      : t("player.idle")}
               </p>
             </div>
 
@@ -212,7 +223,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
               {!live && <SkipButton seconds={-10} onClick={() => run("seek_relative", -10)} disabled={!canSeek} className={NARROW_HIDDEN} />}
               <PlayPauseButton
                 size="lg"
-                state={active ? player.player_state : "PAUSED"}
+                state={loading && active ? "BUFFERING" : active ? player.player_state : "PAUSED"}
                 onToggle={() => run(active ? "toggle" : "play")}
                 disabled={idleImage}
                 className="mx-1"

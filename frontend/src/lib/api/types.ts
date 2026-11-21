@@ -124,6 +124,12 @@ export interface PlayerState {
   active_track_ids: number[];
   queue: QueueItem[];
   showing_idle_image: boolean;
+  /** The receiver dropped the media mid-playback and the server is reloading it. */
+  recovering: boolean;
+  /** 1..RECOVERY_MAX_ATTEMPTS while recovering, 0 otherwise. */
+  recovery_attempt: number;
+  /** ISO time; set once the receiver has been BUFFERING for more than a few seconds. */
+  stalled_since: string | null;
   updated_at: string;
 }
 

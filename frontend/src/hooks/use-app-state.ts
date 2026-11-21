@@ -8,6 +8,7 @@ import {
   effectiveReceivedAt,
   selectActiveDevice,
   selectDevices,
+  selectPendingLoad,
   useAppStore,
   type AppStore,
 } from "@/stores/app-store";
@@ -87,7 +88,16 @@ export function useActiveStatus(): ActiveStatus {
 
 export function isActivePlayback(p: PlayerState | null | undefined): boolean {
   // The idle image is itself "PLAYING" on the receiver: it is not user playback (mirrors the backend).
+  // A stream the server is reconnecting is still playback, even while the receiver reports IDLE.
   return (
-    !!p && p.connected && !p.showing_idle_image && p.player_state !== "IDLE" && p.player_state !== "UNKNOWN"
+    !!p &&
+    p.connected &&
+    !p.showing_idle_image &&
+    (p.recovering || (p.player_state !== "IDLE" && p.player_state !== "UNKNOWN"))
   );
+}
+
+/** Whether this client is waiting for a cast it started to reach PLAYING (optimistic loading). */
+export function usePendingLoad(deviceId: string | null | undefined): boolean {
+  return useAppStore((s) => selectPendingLoad(s, deviceId));
 }

@@ -57,6 +57,9 @@ class FakeCastDriver:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._last_media: dict[str, MediaRequest] = {}
         self.calls: list[tuple[str, str, object]] = []  # for tests
+        # tests: the next N LOADs are accepted, then the receiver gives up (IDLE / ERROR)
+        # instead of starting playback
+        self.fail_next_loads = 0
 
     # ------------------------------------------------------------ plumbing
     def set_listener(self, listener: DriverListener) -> None:
@@ -183,9 +186,15 @@ class FakeCastDriver:
         self._tasks[device_id] = asyncio.create_task(self._progress(device_id, media))
 
     async def _progress(self, device_id: str, media: MediaRequest) -> None:
+        failing = self.fail_next_loads > 0 and not media.is_image
+        if failing:
+            self.fail_next_loads -= 1
         await asyncio.sleep(self.delay)
         st = self._status.get(device_id)
         if not st:
+            return
+        if failing:
+            self.fail(device_id)
             return
         st.player_state = "PLAYING" if media.autoplay else "PAUSED"
         st.status_at = time.time()

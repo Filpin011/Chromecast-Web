@@ -200,6 +200,9 @@ interface PlayerState {
   active_track_ids: number[];
   queue: QueueItem[];
   showing_idle_image: boolean;
+  recovering: boolean;            // the receiver dropped the media mid-playback; the server is reloading it
+  recovery_attempt: number;       // 1..3 while recovering, 0 otherwise
+  stalled_since: string | null;   // ISO; set once the receiver has been BUFFERING for > 4 s
   updated_at: string;
 }
 
@@ -318,10 +321,23 @@ Backend behaviour notes (implemented in `backend/`):
   when it is empty and `show_idle_on_stop` is on, the idle image is shown. `stop` clears the queue (and shows the
   idle image when `show_idle_on_stop`). `go_live` reloads a LIVE stream (jumps to the live edge).
   It also advances (with an error toast) when media we loaded ends in `IDLE` / `ERROR` (LOAD accepted, then the URL
-  turned out dead). A LOAD the receiver rejects is reported only by the request's 502; an `IDLE` / `ERROR` it
+  turned out dead), unless it is recovered (next bullet). A LOAD the receiver rejects is reported only by the request's 502; an `IDLE` / `ERROR` it
   broadcasts for that LOAD neither toasts nor advances the queue. Queue/previous entries older than 3 min are
   resolved again from their input before playback
   (yt-dlp/page URLs expire); browser-captured streams are played as captured.
+- **Auto-recovery**: when media we loaded ends in `IDLE` / `ERROR` after it had played (a LIVE stream that reached
+  `PLAYING` at all, or any media that had been `PLAYING` for >= 20 s), the server reloads it instead of skipping it:
+  up to 3 attempts, waiting 2 s, 5 s, 10 s before each. The first attempt reloads the same media; it is resolved again
+  from its input when it is older than 3 min or a plain reload already failed (never for browser captures). An attempt
+  fails when the LOAD is rejected, the receiver reports `IDLE` / `ERROR` again, or it doesn't reach `PLAYING` within
+  30 s. `PLAYING` ends the recovery (`stream_restored` toast); the attempt budget refills only after the stream has
+  played 20 s again (a stream that keeps dying is not reloaded forever). When attempts run out: `playback_failed`
+  toast, the queue advances, else the idle image when `show_idle_on_stop`. While recovering the player has
+  `recovering: true` / `recovery_attempt` and keeps the media's title/thumbnail. stop / next / previous / go_live,
+  a new play or enqueue-when-idle, the idle image and disconnect cancel the recovery; `play` / `toggle` while
+  recovering reload the media right away. A LOAD rejected at the start (the 502 path) is never recovered.
+- `stalled_since` is set (and broadcast, without waiting for another status) once the receiver has been
+  `BUFFERING` for more than 4 s, and cleared on any other state.
 - HLS whose CORS can't be verified (probed with `Origin: https://www.gstatic.com` on the playlist, first variant,
   audio rendition and their first segments; a CDN answering that Origin with an HTTP error is probed again without
   it, for master/live/segment format, and proxied), DASH whose manifest doesn't answer that Origin, any source needing
@@ -408,7 +424,11 @@ type ServerMessage =
 
 Toast codes (always sent with `params`, possibly `{}`):
 - `cast_error` {detail} — driver/receiver error (detail is technical English);
-- `playback_failed` {title} — the receiver accepted a LOAD and then gave up (dead / expired URL);
+- `playback_failed` {title} — the receiver accepted a LOAD and then gave up (dead / expired URL), or auto-recovery
+  ran out of attempts;
+- `stream_reconnecting` {title, attempt, max} (info) — the receiver dropped the stream; reload attempt `attempt` of
+  `max` is scheduled;
+- `stream_restored` {title} (success) — a recovery reload is playing again;
 - `queue_skipped` {title, detail, error_code, error_reason, …the error's own params} — a queued entry could not be
   played and was skipped; the UI translates `error_code`/`error_reason` like an `ApiError`.
 
