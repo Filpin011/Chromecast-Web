@@ -33,6 +33,16 @@ describe("detectInput", () => {
     expect(detectInput("https://a.b/c.m3u8").sourceKind).toBe("direct");
     expect(detectInput("https://a.b/page").sourceKind).toBeUndefined();
   });
+
+  it("keeps Kodi-style headers verbatim and classifies the URL before them", () => {
+    const raw = "http://iptv.example/live/x/index.m3u8|Referer=http://a.example/&User-Agent=VLC%2F3.0";
+    expect(detectInput(raw)).toEqual({ kind: "stream", value: raw, sourceKind: "direct" });
+    expect(detectInput("iptv.example/tv.m3u|User-Agent=VLC")).toEqual({
+      kind: "m3u",
+      value: "https://iptv.example/tv.m3u|User-Agent=VLC",
+      sourceKind: "m3u",
+    });
+  });
 });
 
 describe("normalizeUrl", () => {

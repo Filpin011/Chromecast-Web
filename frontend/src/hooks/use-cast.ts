@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -50,6 +50,18 @@ export async function ensureDevice(settings: Settings | undefined): Promise<stri
   return useUiStore.getState().requestDevice();
 }
 
+/**
+ * Settings for the default device. Only the Settings page keeps them in the query cache, so fetch them
+ * when another page casts first; casting still works (the device sheet asks) if that fails.
+ */
+async function loadSettings(qc: QueryClient): Promise<Settings | undefined> {
+  try {
+    return await qc.ensureQueryData({ queryKey: qk.settings, queryFn: () => api.settings.get() });
+  } catch {
+    return undefined;
+  }
+}
+
 function deviceName(id: string): string {
   return useAppStore.getState().appState?.devices.find((d) => d.id === id)?.name ?? "Chromecast";
 }
@@ -61,7 +73,7 @@ export function useCast() {
 
   const withDevice = useCallback(
     async (label: string, fn: (deviceId: string) => Promise<PlayerState>, enqueue?: boolean) => {
-      const deviceId = await ensureDevice(qc.getQueryData<Settings>(qk.settings));
+      const deviceId = await ensureDevice(await loadSettings(qc));
       if (!deviceId) {
         if (!enqueue) emitCastEvent({ type: "cancel" });
         return null;
@@ -85,7 +97,8 @@ export function useCast() {
         if (!enqueue) useAppStore.getState().settlePendingLoad(deviceId, p);
         toast.success(enqueue ? t("cast.added") : t("cast.playingOn", { device: deviceName(deviceId) }), {
           id,
-          description: p.title ?? label,
+          // what was added, not what is playing (enqueue returns the player, still on the current media)
+          description: enqueue ? label : (p.title ?? label),
         });
         qc.invalidateQueries({ queryKey: qk.history });
         if (!enqueue) emitCastEvent({ type: "ok", player: p });

@@ -45,6 +45,25 @@ def test_refresh_replaces_channels(client, mock_http):
     assert pl2["updated_at"] >= pl["updated_at"]
 
 
+def test_refresh_keeps_channels_when_the_source_is_empty_or_a_stream(client, mock_http):
+    route = mock_http.get(URL)
+    route.respond(200, text=IPTV)
+    pl = client.post("/api/playlists", json={"url": URL}).json()
+    for body, code, reason in (("#EXTM3U\n", "resolve_failed", "empty_playlist"),
+                               (LIVE_MEDIA, "unsupported_source", "hls_not_playlist")):
+        route.respond(200, text=body)
+        r = client.post(f"/api/playlists/{pl['id']}/refresh")
+        assert r.status_code == 400 and (r.json()["code"], r.json()["reason"]) == (code, reason)
+        assert client.get(f"/api/playlists/{pl['id']}").json()["channel_count"] == 5
+
+
+def test_import_rejects_a_url_that_is_not_http(client):
+    for bad in ("not a url", "ftp://lists.example.com/x.m3u", "http://[bad/x.m3u"):
+        r = client.post("/api/playlists", json={"url": bad})
+        assert r.status_code == 400, bad
+        assert (r.json()["code"], r.json()["reason"]) == ("unsupported_source", "malformed_url")
+
+
 def test_errors(client, mock_http):
     assert client.post("/api/playlists", json={}).status_code == 422
     mock_http.get("https://lists.example.com/hls.m3u").respond(200, text=LIVE_MEDIA)

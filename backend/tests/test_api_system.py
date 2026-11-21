@@ -35,6 +35,17 @@ def test_settings_roundtrip_and_partial_update(client):
     assert client.put("/api/settings", json={"popup_policy": "maybe"}).status_code == 422
 
 
+def test_settings_reject_urls_the_chromecast_cannot_fetch(client):
+    for field in ("idle_image_url", "public_base_url"):
+        for bad in ("not a url", "foo", "192.168.1.10:8000", "ftp://x/i.jpg", "http://", "http://a b/"):
+            r = client.put("/api/settings", json={field: bad})
+            assert r.status_code == 422 and r.json()["code"] == "validation_error", (field, bad)
+        assert client.get("/api/settings").json()[field] is None
+        s = client.put("/api/settings", json={field: "  https://host.lan:8000/x  "}).json()
+        assert s[field] == "https://host.lan:8000/x"
+        assert client.put("/api/settings", json={field: "  "}).json()[field] is None
+
+
 def test_settings_persist_across_restarts(config: AppConfig):
     with TestClient(create_app(config)) as c:
         c.put("/api/settings", json={"public_base_url": "http://10.0.0.2:8000", "show_idle_on_connect": False})

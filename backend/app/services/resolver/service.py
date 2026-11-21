@@ -542,6 +542,16 @@ class Resolver:
     # ------------------------------------------------------------ public API
     async def resolve(self, value: str, kind: SourceKind | None = None) -> MediaResult | PlaylistResult:
         value = value.strip()
+        if value.lstrip("\ufeff").startswith("#EXTM3U"):  # playlist text pasted into the smart input: preview it
+            name, channels, is_hls = await self.load_m3u(content=value)
+            if is_hls:
+                raise AppError(
+                    400, "HLS playlist text can't be cast: give its URL", "unsupported_source",
+                    reason="unsupported_input",
+                )
+            if not channels:
+                raise AppError(400, "The playlist contains no channels", "resolve_failed", reason="empty_playlist")
+            return PlaylistResult(name=name, channels=channels)
         url, headers = split_input(value)  # Kodi-style "url|Referer=...&User-Agent=..."
         validate_url(url)
         kind = kind or await self.detect_kind(value)
@@ -581,6 +591,11 @@ class Resolver:
             if not url:
                 raise AppError(400, "Either url or content is required", "validation_error")
             url, extra = split_input(url)
+            validate_url(url)
+            if not is_url(url):  # a playlist is only ever fetched over http(s)
+                raise AppError(
+                    400, f"Not an http(s) URL: {url[:80]}", "unsupported_source", reason="malformed_url"
+                )
             content, _ = await self.fetch_text(url, {**extra, **(headers or {})})
             name = title_from_url(url)
         if hls.is_hls_playlist(content):
