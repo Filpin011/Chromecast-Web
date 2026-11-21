@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
+import json
 import os
 import subprocess
 import sys
@@ -72,6 +73,25 @@ async def close_browser_sessions(base: str) -> None:
             await c.delete(f"/api/browser/sessions/{s['id']}")
 
 
+def recovering_ws(ws) -> None:  # playwright WebSocketRoute
+    """Relay the app's /ws, marking every playing device as recovering (attempt 1 of 3)."""
+    server = ws.connect_to_server()
+
+    def patch(message: str | bytes) -> None:
+        try:
+            msg = json.loads(message)
+        except (TypeError, ValueError):
+            ws.send(message)
+            return
+        if msg.get("type") == "state":
+            for player in msg["data"].get("players", {}).values():
+                if player.get("media_url"):
+                    player.update(player_state="BUFFERING", recovering=True, recovery_attempt=1)
+        ws.send(json.dumps(msg))
+
+    server.on_message(patch)
+
+
 async def run(base: str, content_port: int) -> dict[str, bytes]:
     sh = Shooter(base, content_port)
     async with httpx.AsyncClient(base_url=base) as c:
@@ -90,6 +110,22 @@ async def run(base: str, content_port: int) -> dict[str, bytes]:
         await page.keyboard.press("Escape")
         await page.wait_for_timeout(500)
 
+        await ctx.close()
+
+        # Now Playing while the server reloads a dropped live stream: the demo can't drop a stream on
+        # cue, so the state snapshots this page receives are patched to "recovering, attempt 1/3".
+        ctx = await sh.context(browser)
+        page = await ctx.new_page()
+        await page.route_web_socket("**/ws", recovering_ws)
+        await sh.goto(page, "/")
+        await page.get_by_label("Open player").filter(visible=True).first.click()
+        await page.get_by_text("attempt 1/3").filter(visible=True).first.wait_for(timeout=10_000)
+        await sh.shot(page, "now-playing-reconnecting")
+        await ctx.close()
+
+        ctx = await sh.context(browser)
+        page = await ctx.new_page()
+        await sh.goto(page, "/")
         await page.get_by_label("Device: Living Room").filter(visible=True).first.click()
         await sh.shot(page, "devices")
         await page.keyboard.press("Escape")
@@ -134,6 +170,37 @@ async def run(base: str, content_port: int) -> dict[str, bytes]:
         await sh.shot(page, "desktop-browser")
         await ctx.close()
         await close_browser_sessions(base)
+
+        # ---------------------------------------------------------------- TV, custom receiver (CAST_APP_ID)
+        # The CAF SDK only runs on a Cast device: it is blocked here (receiver.js stops after
+        # drawing its static UI) and each screen is selected by its body[data-state].
+        ctx = await browser.new_context(viewport={"width": 1280, "height": 720}, locale="en-US")
+        page = await ctx.new_page()
+        await page.route("**/www.gstatic.com/**", lambda route: route.fulfill(body="", content_type="text/javascript"))
+        await page.goto(f"{base}/receiver/")
+        await page.evaluate(
+            """() => {
+              document.getElementById('clock').textContent = '21:30';
+              document.getElementById('loading-title').textContent = 'Northern Lights Live — Arctic Sky Cam';
+              document.getElementById('error-detail').textContent = 'Northern Lights Live — Arctic Sky Cam';
+            }"""
+        )
+        for state, name, extra in (
+            ("idle", "receiver-idle", ""),
+            ("loading", "receiver-loading", "Slow connection, still loading…"),
+            ("error", "receiver-reconnecting", ""),
+        ):
+            await page.evaluate(
+                """([state, text]) => {
+                  document.body.dataset.state = state;
+                  document.body.classList.toggle('slow', !!text);
+                  if (text) document.getElementById('loading-text').textContent = text;
+                }""",
+                [state, extra],
+            )
+            await page.wait_for_timeout(600)
+            await sh.shot(page, name)
+        await ctx.close()
         await browser.close()
     return sh.png
 

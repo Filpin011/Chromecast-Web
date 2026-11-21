@@ -53,6 +53,11 @@ with a built-in remote browser that finds the video inside web pages for you.
 - Play/pause, seek, ±10 s, *Go live*, volume, subtitles and audio tracks, previous/next.
 - Server-side **queue** (reorder, remove), **favorites**, **history**, an **idle image** on the TV.
 - Every open phone, tablet and PC stays **in sync in real time** over WebSocket.
+- **Never looks frozen**: *Loading…*, *Slow connection…* and *Reconnecting… attempt 1/3* right on the player.
+- **Live streams come back on their own**: when the Chromecast drops a live stream (a stalled segment, a CDN hiccup)
+  the server reloads it, up to 3 times, before giving up.
+- Optional **custom TV player** ([setup](docs/CUSTOM_RECEIVER.md)): loading and reconnecting screens on the TV,
+  title/LIVE overlay and more patient buffering for flaky live HLS.
 
 **Plays what the Chromecast can't**
 - Built-in **proxy** for streams that need a Referer, Cookie, User-Agent or CORS headers.
@@ -77,11 +82,23 @@ with a built-in remote browser that finds the video inside web pages for you.
     <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Settings"><br><sub>Settings</sub></td>
     <td align="center"><img src="docs/screenshots/now-playing-light.png" width="200" alt="Light theme"><br><sub>Light theme</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/now-playing-reconnecting.png" width="200" alt="Now Playing while reconnecting"><br><sub>Live stream reconnecting</sub></td>
+  </tr>
 </table>
 
 **On the TV** — the idle screen shown when nothing is playing (you can use your own image in **Settings**):
 
 <p align="center"><img src="backend/app/static/idle.jpg" width="100%" alt="Idle screen on the TV: the Chromecast Web icon with cast waves and &quot;Ready to cast&quot;"></p>
+
+<details>
+<summary><b>On the TV with the custom player</b> (optional, <code>CAST_APP_ID</code>)</summary>
+
+![Custom player: idle screen with clock](docs/screenshots/receiver-idle.png)
+![Custom player: slow connection, still loading](docs/screenshots/receiver-loading.png)
+![Custom player: stream interrupted, reconnecting](docs/screenshots/receiver-reconnecting.png)
+
+</details>
 
 <details>
 <summary><b>Desktop</b></summary>
@@ -208,7 +225,7 @@ default device, idle image, force proxy, ad blocking, popup policy — is set in
 | `ENABLE_PLAYWRIGHT` | `true` | Web-page extraction and the remote browser (headless Chromium). |
 | `FILTERS_AUTO_UPDATE` | `true` | Download/refresh uBlock Origin's default lists every 24 h; `false` = bundled fallback list only. |
 | `AUDIO_LANGUAGE` | unset | Preferred audio language for HLS streams with several audio tracks (`it`, `ita`, `en`…); unset = the stream's own default. |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. At `info` the log keeps state changes and problems (slow/aborted segments, receiver errors, reconnects) and a per-stream proxy summary every minute; `debug` adds one line per request. |
 | `FFMPEG_PATH` | `ffmpeg` | FFmpeg binary used by `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` next to `FFMPEG_PATH` | FFprobe binary (codec detection). |
 | `BROWSER_MAX_SESSIONS` | `2` | Concurrent remote-browser sessions. |
@@ -265,6 +282,18 @@ vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 - Enable **Force proxy** for streams that need a Referer/Cookie or lack CORS headers.
 - Formats the Chromecast can't decode (raw TS, RTMP, AVI, MPEG-2, Xvid…) go through `/restream`: make sure
   `ffmpeg` works on the server (it's included in the Docker image). Transcoding needs some CPU.
+</details>
+
+<details>
+<summary><b>A live stream stopped after a few minutes</b></summary>
+
+- The server reloads a live stream the Chromecast dropped (up to 3 tries, shown as *Reconnecting… attempt n/3*).
+  If all tries fail, the source itself is down or keeps stalling.
+- The log tells which: a `proxy … segment …: client gave up after …` or `live playlist … not advancing` warning
+  points at the source/CDN, and `receiver ERROR … detailedErrorCode=…` is the Chromecast's own error code. Run with
+  `LOG_LEVEL=debug` for one line per segment (size, time to first byte, total time).
+- The optional [custom TV player](docs/CUSTOM_RECEIVER.md) retries failed segments more and waits longer before
+  failing, which rides out most short stalls.
 </details>
 
 <details>

@@ -54,6 +54,12 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
 - Play/pausa, seek, ±10 s, *Vai al live*, volume, sottotitoli e tracce audio, precedente/successivo.
 - **Coda** lato server (riordina, rimuovi), **preferiti**, **cronologia**, **immagine di attesa** sulla TV.
 - Tutti i telefoni, tablet e PC aperti restano **sincronizzati in tempo reale** via WebSocket.
+- **Non sembra mai bloccato**: *Caricamento…*, *Connessione lenta…* e *Riconnessione… tentativo 1/3* direttamente
+  sul player.
+- **Le dirette ripartono da sole**: se il Chromecast perde una diretta (un segmento bloccato, un intoppo del CDN) il
+  server la ricarica, fino a 3 volte, prima di arrendersi.
+- **Player TV personalizzato** opzionale ([configurazione](docs/CUSTOM_RECEIVER.md)): schermate di caricamento e
+  riconnessione sulla TV, overlay con titolo/LIVE e un buffer più paziente per le dirette HLS instabili.
 
 **Riproduce ciò che il Chromecast non legge**
 - **Proxy** integrato per gli stream che richiedono Referer, Cookie, User-Agent o header CORS.
@@ -79,12 +85,26 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
     <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Impostazioni"><br><sub>Impostazioni</sub></td>
     <td align="center"><img src="docs/screenshots/now-playing-light.png" width="200" alt="Tema chiaro"><br><sub>Tema chiaro</sub></td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/now-playing-reconnecting.png" width="200" alt="In riproduzione durante la riconnessione"><br><sub>Diretta in riconnessione</sub></td>
+  </tr>
 </table>
 
 **Sulla TV** — la schermata di attesa mostrata quando non è in riproduzione nulla (puoi usare un'immagine tua in
 **Impostazioni**):
 
 <p align="center"><img src="backend/app/static/idle.jpg" width="100%" alt="Schermata di attesa sulla TV: l'icona di Chromecast Web con le onde del cast e &quot;Ready to cast&quot;"></p>
+
+<details>
+<summary><b>Sulla TV con il player personalizzato</b> (opzionale, <code>CAST_APP_ID</code>)</summary>
+
+![Player personalizzato: schermata di attesa con orologio](docs/screenshots/receiver-idle.png)
+![Player personalizzato: connessione lenta, caricamento in corso](docs/screenshots/receiver-loading.png)
+![Player personalizzato: flusso interrotto, riconnessione](docs/screenshots/receiver-reconnecting.png)
+
+<sub>Il testo sulla TV segue la lingua del Chromecast (italiano o inglese).</sub>
+
+</details>
 
 <details>
 <summary><b>Desktop</b></summary>
@@ -213,7 +233,7 @@ nell'app, in **Impostazioni**.
 | `ENABLE_PLAYWRIGHT` | `true` | Estrazione dalle pagine web e browser remoto (Chromium headless). |
 | `FILTERS_AUTO_UPDATE` | `true` | Scarica/aggiorna le liste predefinite di uBlock Origin ogni 24 ore; `false` = solo la lista di riserva inclusa. |
 | `AUDIO_LANGUAGE` | non impostata | Lingua audio preferita per gli stream HLS con più tracce audio (`it`, `ita`, `en`…); vuota = quella predefinita dello stream. |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error`. Con `info` il log tiene i cambi di stato e i problemi (segmenti lenti/interrotti, errori del Chromecast, riconnessioni) e un riepilogo del proxy per ogni stream ogni minuto; `debug` aggiunge una riga per richiesta. |
 | `FFMPEG_PATH` | `ffmpeg` | Binario FFmpeg usato da `/restream`. |
 | `FFPROBE_PATH` | `ffprobe` accanto a `FFMPEG_PATH` | Binario FFprobe (riconoscimento codec). |
 | `BROWSER_MAX_SESSIONS` | `2` | Sessioni contemporanee del browser remoto. |
@@ -271,6 +291,18 @@ vulnerabilità in privato come descritto in [SECURITY.md](SECURITY.md).
 - Attiva **Forza proxy** per gli stream che richiedono Referer/Cookie o non hanno header CORS.
 - I formati che il Chromecast non decodifica (TS grezzo, RTMP, AVI, MPEG-2, Xvid…) passano da `/restream`:
   verifica che `ffmpeg` funzioni sul server (nell'immagine Docker è incluso). La ricodifica richiede un po' di CPU.
+</details>
+
+<details>
+<summary><b>Una diretta si è fermata dopo qualche minuto</b></summary>
+
+- Il server ricarica una diretta che il Chromecast ha perso (fino a 3 tentativi, mostrati come *Riconnessione…
+  tentativo n/3*). Se falliscono tutti, è la sorgente stessa a essere giù o a bloccarsi di continuo.
+- Il log dice quale dei due: un avviso `proxy … segment …: client gave up after …` o `live playlist … not advancing`
+  indica la sorgente/il CDN, mentre `receiver ERROR … detailedErrorCode=…` è il codice d'errore del Chromecast.
+  Con `LOG_LEVEL=debug` c'è una riga per segmento (dimensione, tempo al primo byte, tempo totale).
+- Il [player TV personalizzato](docs/CUSTOM_RECEIVER.md) opzionale ritenta di più i segmenti falliti e aspetta di
+  più prima di dare errore, così supera la maggior parte dei blocchi brevi.
 </details>
 
 <details>

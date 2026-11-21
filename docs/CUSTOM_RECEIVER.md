@@ -24,6 +24,12 @@ plain HTML/CSS/JS, no build step, Google's CAF SDK loaded from `www.gstatic.com`
 | Idle | Google's backdrop | app name + clock; the idle image (Settings → idle image) is shown full screen with the clock |
 | Flaky live HLS | CAF defaults | larger resume buffer, more segment retries, explicit request timeouts (below) |
 
+<p align="center">
+  <img src="screenshots/receiver-idle.png" width="32%" alt="Idle screen with clock">
+  <img src="screenshots/receiver-loading.png" width="32%" alt="Slow connection, still loading">
+  <img src="screenshots/receiver-reconnecting.png" width="32%" alt="Stream interrupted, reconnecting">
+</p>
+
 The TV text language follows the device's `navigator.language` (Italian when it starts with `it`,
 English otherwise). The LOAD semantics stay those of the Default Media Receiver: the backend sends
 the same LOAD (`hlsSegmentFormat`, `hlsVideoSegmentFormat`, subtitle `tracks`, `textTrackStyle`,
