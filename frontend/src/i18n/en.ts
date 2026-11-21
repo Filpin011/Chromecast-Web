@@ -122,6 +122,9 @@ export const en = {
   "settings.install": "Install as an app",
   "settings.installHint": "On iPhone: Share → Add to Home Screen.",
   "settings.saveFailed": "Settings not saved",
+  "settings.saved": "Saved",
+  "settings.invalidUrl": "Not saved: enter a full http(s) address",
+  "settings.invalidUrlInline": "Enter a full address starting with http:// or https://",
   // connection
   "connection.reconnecting": "Reconnecting…",
   "connection.lost": "Lost connection to the server — reconnecting…",
@@ -221,6 +224,7 @@ export const en = {
   "adblock.popupBlockedHosts": "Sites with popups always blocked",
   "adblock.popupBlockedHostsEmpty": "None.",
   "adblock.filterLists": "Filter lists",
+  "adblock.refreshLists": "Refresh",
   "adblock.lists_one": "{count} list",
   "adblock.lists_other": "{count} lists",
   "adblock.rules_one": "{count} rule",

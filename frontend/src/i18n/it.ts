@@ -118,6 +118,9 @@ export const it: Messages = {
   "settings.install": "Installa come app",
   "settings.installHint": "Su iPhone: Condividi → Aggiungi alla schermata Home.",
   "settings.saveFailed": "Impostazioni non salvate",
+  "settings.saved": "Salvato",
+  "settings.invalidUrl": "Non salvato: inserisci un indirizzo http(s) completo",
+  "settings.invalidUrlInline": "Inserisci un indirizzo completo che inizi con http:// o https://",
   // connection
   "connection.reconnecting": "Riconnessione…",
   "connection.lost": "Connessione al server persa — riconnessione in corso…",
@@ -217,6 +220,7 @@ export const it: Messages = {
   "adblock.popupBlockedHosts": "Siti con popup sempre bloccati",
   "adblock.popupBlockedHostsEmpty": "Nessuno.",
   "adblock.filterLists": "Liste filtri",
+  "adblock.refreshLists": "Aggiorna",
   "adblock.lists_one": "{count} lista",
   "adblock.lists_other": "{count} liste",
   "adblock.rules_one": "{count} regola",
