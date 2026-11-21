@@ -36,6 +36,9 @@ export function makePlayer(over: Partial<PlayerState> = {}): PlayerState {
     active_track_ids: [],
     queue: [],
     showing_idle_image: false,
+    recovering: false,
+    recovery_attempt: 0,
+    stalled_since: null,
     updated_at: "2026-11-12T10:00:00Z",
     ...over,
   };
