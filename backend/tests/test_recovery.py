@@ -280,6 +280,18 @@ async def test_playing_blips_do_not_end_a_stall(svc):
     await wait(lambda: svc.cast.player(DEV).stalled_since is None)
 
 
+async def test_new_media_ends_a_stall(svc, monkeypatch):
+    # zapping: each channel is switched before it played STEADY_AFTER, which must not add up to a stall
+    monkeypatch.setattr(cast_service, "STEADY_AFTER", 1.0)
+    driver = svc.cast.driver
+    driver.delay = 0.08
+    for _ in range(3):
+        await svc.cast.play(DEV, LIVE, title="Live")
+        await wait(lambda: svc.cast.player(DEV).player_state == "PLAYING")
+    assert svc.cast.player(DEV).stalled_since is None
+    assert svc.cast._stalls.get(DEV) is None or svc.cast._stalls[DEV].blips == 0
+
+
 async def test_stalled_live_stream_is_reloaded_by_the_watchdog(svc, monkeypatch):
     monkeypatch.setattr(cast_service, "LIVE_STALL_RELOAD", 0.3)
     await start_live(svc)
