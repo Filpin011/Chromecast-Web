@@ -12,14 +12,17 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api import browser, devices, media, playlists, resolve, system, ws
 from app.config import AppConfig, get_settings
 from app.errors import AppError, install_error_handlers
 from app.services.browser.launcher import BrowserProvider
-from app.services.cast.base import CastDriver
+from app.services.cast.base import CastDriver, receiver_app_id, receiver_app_name, set_receiver_app_id
 from app.services.container import build_services
+
+RECEIVER_DIR = Path(__file__).resolve().parent / "static" / "receiver"
 
 log = logging.getLogger("app")
 
@@ -144,6 +147,11 @@ def create_app(
     app.add_middleware(MediaPreflightMiddleware)  # added last = outermost, runs before CORS
     for r in (system.router, resolve.router, devices.router, playlists.router, browser.router, ws.router, media.router):
         app.include_router(r)
+    # Custom Cast Web Receiver (docs/CUSTOM_RECEIVER.md): static page at /receiver/ and the
+    # app id every LOAD targets (CAST_APP_ID; unset = Default Media Receiver CC1AD845).
+    set_receiver_app_id(config.cast_app_id)
+    log.info("cast receiver app_id=%s (%s)", receiver_app_id(), receiver_app_name())
+    app.mount("/receiver", StaticFiles(directory=RECEIVER_DIR, html=True), name="receiver")
     mount_frontend(app, config.frontend_dir)
     return app
 

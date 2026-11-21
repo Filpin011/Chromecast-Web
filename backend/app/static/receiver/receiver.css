@@ -1,0 +1,233 @@
+/* Chromecast-Web receiver: 10-foot UI. Sizes in vh/vw so the same layout works whatever
+   resolution the device renders the page at (720p / 1080p graphics plane, 4K video plane).
+   Low-power devices: CSS transitions/animations on opacity/transform only. */
+
+:root {
+  --bg: #0b0d12;
+  --fg: #f2f4f8;
+  --muted: #a9b0bd;
+  --accent: #4f8cff;
+  --live: #e53935;
+  --warn: #ffb300;
+  --scrim: rgba(5, 7, 12, 0.82);
+  --safe-x: 5vw;  /* title-safe margins */
+  --safe-y: 5vh;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: var(--fg);
+  font-family: "Google Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+#video, #still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+#still { display: none; }
+body[data-state="image"] #still { display: block; }
+body[data-state="image"] #video { visibility: hidden; }
+
+/* ------------------------------------------------------------------ screens */
+.screen {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0s linear 0.4s;
+}
+
+.screen.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3vh;
+  text-align: center;
+  padding: var(--safe-y) var(--safe-x);
+}
+
+body[data-state="idle"] #idle,
+body[data-state="loading"] #loading,
+body[data-state="error"] #error {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.4s ease;
+}
+
+/* idle: brand + clock; over an idle image (state "image") only the clock is shown */
+#idle {
+  background: radial-gradient(ellipse at 30% 20%, #1b2438 0%, var(--bg) 70%);
+}
+
+.brand {
+  position: absolute;
+  left: var(--safe-x);
+  top: var(--safe-y);
+  display: flex;
+  align-items: center;
+  gap: 1.5vw;
+  font-size: 4.4vh;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.logo { width: 6vh; height: 6vh; color: var(--accent); }
+
+.clock {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  font-size: 12vh;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0.3vh 1.2vh rgba(0, 0, 0, 0.6);
+}
+
+.idle-text {
+  position: absolute;
+  left: var(--safe-x);
+  bottom: calc(var(--safe-y) + 2vh);
+  font-size: 3.2vh;
+  color: var(--muted);
+}
+
+body[data-state="image"] #idle {
+  opacity: 1;
+  visibility: visible;
+  background: none;
+}
+body[data-state="image"] .brand,
+body[data-state="image"] .idle-text { display: none; }
+
+#loading, #error { background: var(--scrim); }
+
+.big { font-size: 5vh; font-weight: 500; }
+.small { font-size: 3vh; color: var(--muted); max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.spinner {
+  width: 14vh;
+  height: 14vh;
+  border-radius: 50%;
+  border: 1.2vh solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
+.spinner.warn { border-top-color: var(--warn); animation-duration: 1.6s; }
+
+/* slow buffering: the text turns amber */
+body.slow #loading-text { color: var(--warn); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------------ overlay */
+#overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5vw;
+  padding: 14vh var(--safe-x) var(--safe-y);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+  opacity: 0;
+  transform: translateY(4vh);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+body.overlay[data-state="playing"] #overlay,
+body.overlay[data-state="paused"] #overlay,
+body[data-state="paused"] #overlay {
+  opacity: 1;
+  transform: none;
+}
+
+#art {
+  width: 18vh;
+  height: 18vh;
+  object-fit: cover;
+  border-radius: 1vh;
+  background: #222;
+  flex: none;
+  box-shadow: 0 0.5vh 2vh rgba(0, 0, 0, 0.5);
+}
+#art:not([src]), #art[src=""] { display: none; }
+
+.meta { flex: 1; min-width: 0; }
+
+.title-row { display: flex; align-items: center; gap: 1.5vw; }
+
+.title {
+  font-size: 5vh;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live {
+  display: none;
+  flex: none;
+  padding: 0.5vh 1.2vw;
+  border-radius: 0.6vh;
+  background: var(--live);
+  font-size: 2.8vh;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+body.is-live .live { display: inline-block; }
+body.is-live .vod { display: none; }
+
+.vod { margin-top: 2.5vh; }
+
+.bar {
+  height: 0.9vh;
+  border-radius: 0.45vh;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 1s linear;
+  will-change: transform;
+}
+
+.times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.2vh;
+  font-size: 3vh;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* paused: two bars in the top-right corner */
+.paused-icon {
+  position: fixed;
+  top: var(--safe-y);
+  right: var(--safe-x);
+  width: 7vh;
+  height: 8vh;
+  display: none;
+  border-left: 2.4vh solid var(--fg);
+  border-right: 2.4vh solid var(--fg);
+  opacity: 0.9;
+}
+body[data-state="paused"] .paused-icon { display: block; }

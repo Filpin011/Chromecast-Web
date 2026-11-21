@@ -58,6 +58,7 @@ docker-compose.yml  for Coolify (network_mode: host, volume for /data)
 | Var | Default | Meaning |
 |---|---|---|
 | `CAST_DRIVER` | `pychromecast` | `fake` for dev/tests (simulated devices) |
+| `CAST_APP_ID` | unset | custom Cast Web Receiver app id (served at `/receiver/`, see "Custom receiver" and [CUSTOM_RECEIVER.md](CUSTOM_RECEIVER.md)); unset = Default Media Receiver `CC1AD845` |
 | `PUBLIC_BASE_URL` | auto LAN IP + port | base URL reachable by the Chromecast |
 | `PORT` | `8000` | |
 | `DATA_DIR` | `./data` | SQLite DB + temp restream files |
@@ -369,6 +370,22 @@ Backend behaviour notes (implemented in `backend/`):
   `Access-Control-Allow-Origin: *`, methods `GET, HEAD, OPTIONS`, headers incl. `Range`): the receiver
   (`Origin: https://www.gstatic.com`) preflights its Range XHRs. The dev-only CORS policy applies to the rest.
 - `GET /idle.jpg` — default idle image if none configured.
+
+### Custom receiver (optional, `CAST_APP_ID`)
+
+- `GET /receiver/` — static Cast Web Receiver (`backend/app/static/receiver/`: `index.html`, `receiver.js`,
+  `receiver.css`; CAF v3 from gstatic, no build step), mounted in `create_app` before the SPA fallback.
+- `create_app` calls `base.set_receiver_app_id(config.cast_app_id)` and logs the app id in use.
+  `base.receiver_app_id()` is what every LOAD targets: the pychromecast driver registers a media controller with
+  `supporting_app_id=receiver_app_id()` and `app_must_match=True` (`DefaultMediaReceiverController` when unset,
+  i.e. exactly the old behaviour), so pychromecast launches that app first when another one is in front.
+  `base.is_own_receiver()` (used by `DeviceStatus.free_for_idle_image`) treats both `CC1AD845` and the configured
+  id as ours; the fake driver reports the configured id / name.
+- The receiver keeps the Default Media Receiver LOAD semantics (`hlsSegmentFormat`, `hlsVideoSegmentFormat`,
+  tracks, live edge; the two HLS fields are also accepted from `customData`), tunes `PlaybackConfig` for flaky live
+  HLS, and only *displays* errors ("reconnecting…") until the server's next LOAD: it never reloads by itself.
+- Google requires a registered app id (one-time US$5) and, while unpublished, registered device serial numbers;
+  HTTP receiver URLs are allowed for unpublished apps only. Details and citations: [CUSTOM_RECEIVER.md](CUSTOM_RECEIVER.md).
 
 ## WebSocket `/ws`
 

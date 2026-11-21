@@ -18,12 +18,15 @@ from typing import Any
 
 from app.models import Device, MediaTrack
 from app.services.cast.base import (
+    APP_MEDIA_RECEIVER,
     CastError,
     DeviceStatus,
     DriverEvent,
     DriverListener,
     MediaRequest,
     manual_device_id,
+    receiver_app_id,
+    receiver_app_name,
 )
 
 log = logging.getLogger(__name__)
@@ -129,7 +132,7 @@ def _fetch_media_status(cast: Any, timeout: float) -> Any:
 def check_load_response(sent: bool, response: dict[str, Any] | None) -> None:
     """Raise CastError unless the receiver accepted the LOAD."""
     if not sent:
-        raise CastError("Could not start the Default Media Receiver on the Chromecast")
+        raise CastError(f"Could not start the {receiver_app_name()} on the Chromecast")
     mtype = (response or {}).get("type")
     if mtype in LOAD_ERRORS:
         detail = (response or {}).get("detailedErrorCode") or (response or {}).get("reason")
@@ -186,6 +189,17 @@ def log_receiver_errors(controller: Any, device_id: str) -> None:
     receive_message._cw_logged = True  # type: ignore[attr-defined]
     with contextlib.suppress(Exception):
         controller.receive_message = receive_message
+
+
+def _receiver_controller() -> Any:
+    """Media controller bound to our receiver app (app_must_match=True: it launches that
+    app first when another one is in front, instead of LOADing into the other app)."""
+    from pychromecast.controllers.media import BaseMediaPlayer, DefaultMediaReceiverController
+
+    app_id = receiver_app_id()
+    if app_id == APP_MEDIA_RECEIVER:
+        return DefaultMediaReceiverController()
+    return BaseMediaPlayer(supporting_app_id=app_id)
 
 
 class _Listener:
@@ -469,14 +483,12 @@ class PyChromecastDriver:
 
     async def _attach(self, device_id: str, cast: Any) -> None:
         """Make ``cast`` the device's session (replacing any previous one)."""
-        from pychromecast.controllers.media import DefaultMediaReceiverController
-
         st = DeviceStatus(connected=True)
         self._apply_cast_status(st, cast.status)
         self._status[device_id] = st
         self._casts[device_id] = cast
         self._media_seen.pop(device_id, None)
-        dmr = DefaultMediaReceiverController()
+        dmr = _receiver_controller()
         cast.register_handler(dmr)
         self._dmr[device_id] = dmr
         log_receiver_errors(dmr, device_id)

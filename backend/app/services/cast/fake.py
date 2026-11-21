@@ -12,13 +12,14 @@ import time
 from app.models import Device, MediaTrack
 from app.services.cast.base import (
     APP_BACKDROP,
-    APP_MEDIA_RECEIVER,
     CastError,
     DeviceStatus,
     DriverEvent,
     DriverListener,
     MediaRequest,
     manual_device_id,
+    receiver_app_id,
+    receiver_app_name,
 )
 
 FAKE_VOD_DURATION = 600.0
@@ -165,8 +166,8 @@ class FakeCastDriver:
             tracks.append(MediaTrack(id=100, type="AUDIO", name="Audio", language="und"))
             for i, sub in enumerate(media.subtitles, start=1):
                 tracks.append(MediaTrack(id=i, type="TEXT", name=sub.label, language=sub.lang))
-        st.app_name = "Default Media Receiver"
-        st.app_id = APP_MEDIA_RECEIVER
+        st.app_name = receiver_app_name()
+        st.app_id = receiver_app_id()
         st.player_state = "BUFFERING"
         st.idle_reason = None
         st.title = media.title

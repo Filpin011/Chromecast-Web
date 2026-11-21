@@ -17,7 +17,30 @@ DriverListener = Callable[[DriverEvent, str | None, str | None], None]
 
 # Cast receiver app ids
 APP_BACKDROP = "E8C28D3C"  # idle screen / ambient mode
-APP_MEDIA_RECEIVER = "CC1AD845"  # Default Media Receiver (what we LOAD into)
+APP_MEDIA_RECEIVER = "CC1AD845"  # Default Media Receiver (what we LOAD into by default)
+
+# Optional custom Web Receiver (CAST_APP_ID, see docs/CUSTOM_RECEIVER.md): set once by
+# create_app from the config. None = the Default Media Receiver, exactly as before.
+_custom_receiver_app_id: str | None = None
+
+
+def set_receiver_app_id(app_id: str | None) -> None:
+    global _custom_receiver_app_id
+    _custom_receiver_app_id = (app_id or "").strip().upper() or None
+
+
+def receiver_app_id() -> str:
+    """The receiver app every LOAD goes to: CAST_APP_ID when configured, else CC1AD845."""
+    return _custom_receiver_app_id or APP_MEDIA_RECEIVER
+
+
+def receiver_app_name() -> str:
+    return "Chromecast-Web Receiver" if _custom_receiver_app_id else "Default Media Receiver"
+
+
+def is_own_receiver(app_id: str | None) -> bool:
+    """``app_id`` is a receiver we LOAD into (the configured one, or the Default Media Receiver)."""
+    return app_id is not None and app_id in (APP_MEDIA_RECEIVER, receiver_app_id())
 
 
 class CastError(Exception):
@@ -65,13 +88,13 @@ class DeviceStatus:
     def free_for_idle_image(self) -> bool:
         """True when casting the idle image would not interrupt anything.
 
-        Only when no app is running (or the Backdrop), or the Default Media Receiver
-        is loaded but idle. Never over another app (Netflix, YouTube, ...) or over
-        media that is already playing.
+        Only when no app is running (or the Backdrop), or our receiver (Default Media
+        Receiver or the configured custom one) is loaded but idle. Never over another app
+        (Netflix, YouTube, ...) or over media that is already playing.
         """
         if self.app_id in (None, APP_BACKDROP):
             return True
-        return self.app_id == APP_MEDIA_RECEIVER and self.player_state == "IDLE"
+        return is_own_receiver(self.app_id) and self.player_state == "IDLE"
 
     def position_now(self) -> float:
         ct = self.current_time
