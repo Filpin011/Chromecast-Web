@@ -3,6 +3,7 @@
 import { AppWindow, Compass, Globe, Monitor, Smartphone, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { SiteTiles } from "@/components/favorites/site-tiles";
+import { Section } from "@/components/common/section";
 import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { useFavorites } from "@/hooks/queries";
@@ -84,18 +85,12 @@ export function BrowserStart({
         </div>
       </form>
       {sites.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="flex items-center gap-2 px-1 text-sm font-semibold text-muted-foreground">
-            <Globe className="size-4" /> {t("sites.title")}
-          </h2>
+        <Section title={t("sites.title")} icon={Globe}>
           <SiteTiles sites={sites} onOpen={(url) => !busy && onOpen(url)} />
-        </section>
+        </Section>
       )}
       {sessions.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="flex items-center gap-2 px-1 text-sm font-semibold text-muted-foreground">
-            <AppWindow className="size-4" /> {t("browser.openSessions")}
-          </h2>
+        <Section title={t("browser.openSessions")} icon={AppWindow}>
           <ul className="space-y-2">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center gap-1 rounded-2xl border bg-card">
@@ -114,7 +109,7 @@ export function BrowserStart({
               </li>
             ))}
           </ul>
-        </section>
+        </Section>
       )}
     </div>
   );

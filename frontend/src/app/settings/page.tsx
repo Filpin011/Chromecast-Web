@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, ImageIcon, Info, Languages, Loader2, MonitorSmartphone, Network, Palette, ShieldCheck, Tv } from "lucide-react";
+import { Check, ImageIcon, Info, Languages, Loader2, MonitorSmartphone, Network, Palette, ShieldCheck, Tv, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { PageBody, PageHeader } from "@/components/common/page-header";
+import { Section } from "@/components/common/section";
 import { AdblockSettings } from "@/components/settings/adblock-settings";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -18,14 +19,12 @@ import { useT } from "@/i18n";
 import { errorMessage } from "@/lib/query";
 import { useAppStore } from "@/stores/app-store";
 
-function Section({ title, icon: Icon, children }: { title: string; icon: typeof Tv; children: ReactNode }) {
+/** A settings group: the shared section header over a card of rows. */
+function Group({ title, icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h2 className="flex items-center gap-2 px-1 text-sm font-semibold text-muted-foreground">
-        <Icon className="size-4" /> {title}
-      </h2>
+    <Section title={title} icon={icon}>
       <div className="divide-y overflow-hidden rounded-2xl border bg-card">{children}</div>
-    </section>
+    </Section>
   );
 }
 
@@ -144,7 +143,7 @@ export default function SettingsPage() {
         actions={update.isPending ? <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label={t("common.saving")} /> : null}
       />
       <PageBody className="space-y-6 pt-2">
-        <Section title={t("settings.device")} icon={Tv}>
+        <Group title={t("settings.device")} icon={Tv}>
           <Row label={t("settings.defaultDevice")} description={t("settings.defaultDeviceHint")} htmlFor="default-device">
             <select
               id="default-device"
@@ -161,9 +160,9 @@ export default function SettingsPage() {
               ))}
             </select>
           </Row>
-        </Section>
+        </Group>
 
-        <Section title={t("settings.idleImage")} icon={ImageIcon}>
+        <Group title={t("settings.idleImage")} icon={ImageIcon}>
           <div className="space-y-3 px-4 pt-4 pb-1">
             <Thumb src={s?.idle_image_url ?? "/idle.jpg"} className="aspect-video w-full rounded-xl" icon={ImageIcon} />
           </div>
@@ -194,9 +193,9 @@ export default function SettingsPage() {
               {t("settings.showNow")}
             </Button>
           </div>
-        </Section>
+        </Group>
 
-        <Section title={t("settings.network")} icon={Network}>
+        <Group title={t("settings.network")} icon={Network}>
           <div className="pt-3">
             <label htmlFor="public-url" className="block px-4 text-sm font-medium">
               {t("settings.publicUrl")}
@@ -224,25 +223,25 @@ export default function SettingsPage() {
             settings={s}
             onChange={save}
           />
-        </Section>
+        </Group>
 
-        <Section title={t("settings.browserAds")} icon={ShieldCheck}>
+        <Group title={t("settings.browserAds")} icon={ShieldCheck}>
           <AdblockSettings settings={s} onChange={save} />
-        </Section>
+        </Group>
 
-        <Section title={t("settings.language")} icon={Languages}>
+        <Group title={t("settings.language")} icon={Languages}>
           <div className="p-3">
             <LanguagePicker />
           </div>
-        </Section>
+        </Group>
 
-        <Section title={t("settings.appearance")} icon={Palette}>
+        <Group title={t("settings.appearance")} icon={Palette}>
           <div className="p-3">
             <ThemeToggle />
           </div>
-        </Section>
+        </Group>
 
-        <Section title={t("settings.about")} icon={Info}>
+        <Group title={t("settings.about")} icon={Info}>
           <Row label={t("settings.server")}>
             <span className="text-sm text-muted-foreground">
               {health.data ? `v${health.data.version} · driver ${health.data.driver}` : health.isError ? t("settings.unreachable") : "…"}
@@ -257,7 +256,7 @@ export default function SettingsPage() {
           <Row label={t("settings.install")} description={t("settings.installHint")}>
             <MonitorSmartphone className="size-5 text-muted-foreground" />
           </Row>
-        </Section>
+        </Group>
       </PageBody>
     </>
   );
