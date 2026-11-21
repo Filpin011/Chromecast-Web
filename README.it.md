@@ -53,6 +53,7 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
 **Un vero telecomando**
 - Play/pausa, seek, ±10 s, *Vai al live*, volume, sottotitoli e tracce audio, precedente/successivo.
 - **Coda** lato server (riordina, rimuovi), **preferiti**, **cronologia**, **immagine di attesa** sulla TV.
+- **Siti salvati**: metti una stella a una pagina nel browser remoto e riaprila con un tocco dalla Home o dalla Libreria.
 - Tutti i telefoni, tablet e PC aperti restano **sincronizzati in tempo reale** via WebSocket.
 - **Non sembra mai bloccato**: *Caricamento…*, *Connessione lenta…* e *Riconnessione… tentativo 1/3* direttamente
   sul player.

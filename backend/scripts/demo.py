@@ -116,6 +116,14 @@ async def seed(api: str, data_dir: Path) -> None:
         ]
         for fav in reversed(favorites):
             await call("POST", "/api/favorites", json=fav)
+        # saved sites (reopened in the remote browser), fictional like the rest
+        for site in reversed([
+            {"input": f"{content.SITE}/", "title": "Demo TV", "thumbnail": f"{content.SITE}/art/aurora.svg"},
+            {"input": f"{content.SITE}/watch/harbor-cup-final", "title": "Harbor Sports",
+             "thumbnail": f"{content.SITE}/art/stadium.svg"},
+            {"input": f"{content.IPTV}/", "title": "Free TV World", "thumbnail": f"{content.SITE}/art/city.svg"},
+        ]):
+            await call("POST", "/api/favorites", json={**site, "kind": "site"})
 
         dev = f"/api/devices/{LIVING_ROOM}"
         # history, oldest first; the last one stays on the TV
