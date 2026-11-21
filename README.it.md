@@ -206,6 +206,7 @@ nell'app, in **Impostazioni**.
 | `PORT` | `8000` | Porta HTTP. |
 | `HOST` | `0.0.0.0` | Indirizzo di ascolto. |
 | `CAST_DRIVER` | `pychromecast` | `fake` simula due dispositivi (sviluppo, demo, test). |
+| `CAST_APP_ID` | non impostata | Receiver TV personalizzato opzionale (schermate di caricamento/riconnessione, overlay, buffer più robusto per le dirette HLS); richiede una registrazione una tantum come sviluppatore Google Cast, vedi [docs/CUSTOM_RECEIVER.md](docs/CUSTOM_RECEIVER.md). Vuota = Default Media Receiver di Google. |
 | `DATA_DIR` | `./data` (immagine: `/data`) | Database SQLite, liste filtri, file temporanei del restream. |
 | `MEDIA_ROOT` | non impostata | Cartella della sezione *File*; disattivata se assente. |
 | `FRONTEND_DIR` | `../frontend/out` (immagine: `/app/frontend`) | Export statico servito su `/`. |

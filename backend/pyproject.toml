@@ -33,7 +33,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["static/*", "static/filters/*"]
+app = ["static/*", "static/filters/*", "static/receiver/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

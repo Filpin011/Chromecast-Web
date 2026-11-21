@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Chromecast-Web custom Cast Web Receiver (CAF v3). Plain files, no build step.
+  Served by the backend at /receiver/ ; enabled only when CAST_APP_ID is set.
+  See docs/CUSTOM_RECEIVER.md.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chromecast-Web</title>
+  <link rel="stylesheet" href="receiver.css">
+  <!-- Always Google's hosted SDK (protocol-relative: same scheme as this page). -->
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+</head>
+<body data-state="idle">
+  <!-- The media element CAF plays into (custom UI data binding, no cast-media-player). -->
+  <video class="castMediaElement" id="video"></video>
+  <img id="still" alt="">
+
+  <section id="idle" class="screen" aria-hidden="true">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M4 34a10 10 0 0 1 10 10M4 26a18 18 0 0 1 18 18M4 18a26 26 0 0 1 26 26" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M10 8h30a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4H32" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      </svg>
+      <span>Chromecast-Web</span>
+    </div>
+    <div id="clock" class="clock">--:--</div>
+    <div id="idle-text" class="idle-text"></div>
+  </section>
+
+  <section id="loading" class="screen center" aria-hidden="true">
+    <div class="spinner"></div>
+    <p id="loading-text" class="big"></p>
+    <p id="loading-title" class="small"></p>
+  </section>
+
+  <section id="error" class="screen center" aria-hidden="true">
+    <div class="spinner warn"></div>
+    <p id="error-text" class="big"></p>
+    <p id="error-detail" class="small"></p>
+  </section>
+
+  <section id="overlay" aria-hidden="true">
+    <img id="art" alt="">
+    <div class="meta">
+      <div class="title-row">
+        <span id="live" class="live"></span>
+        <span id="title" class="title"></span>
+      </div>
+      <div id="vod" class="vod">
+        <div class="bar"><div id="bar-fill" class="bar-fill"></div></div>
+        <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+      </div>
+    </div>
+    <div id="paused" class="paused-icon"></div>
+  </section>
+
+  <script src="receiver.js"></script>
+</body>
+</html>

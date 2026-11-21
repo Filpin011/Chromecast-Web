@@ -201,6 +201,7 @@ default device, idle image, force proxy, ad blocking, popup policy — is set in
 | `PORT` | `8000` | HTTP port. |
 | `HOST` | `0.0.0.0` | Bind address. |
 | `CAST_DRIVER` | `pychromecast` | `fake` simulates two devices (development, demos, tests). |
+| `CAST_APP_ID` | unset | Optional custom TV receiver (loading/reconnecting screens, overlay, sturdier live HLS buffering); needs a one-time Google Cast developer registration, see [docs/CUSTOM_RECEIVER.md](docs/CUSTOM_RECEIVER.md). Unset = Google's Default Media Receiver. |
 | `DATA_DIR` | `./data` (image: `/data`) | SQLite database, filter lists, restream temp files. |
 | `MEDIA_ROOT` | unset | Folder for the *Files* section; disabled when unset. |
 | `FRONTEND_DIR` | `../frontend/out` (image: `/app/frontend`) | Static export served at `/`. |

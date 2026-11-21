@@ -26,6 +26,8 @@ class AppConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     cast_driver: Literal["pychromecast", "fake"] = "pychromecast"
+    # custom Cast Web Receiver app id (docs/CUSTOM_RECEIVER.md); unset = Default Media Receiver
+    cast_app_id: str | None = None
     public_base_url: str | None = None
     host: str = "0.0.0.0"
     port: int = 8000
