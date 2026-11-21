@@ -334,6 +334,8 @@ export type ServerMessage =
   | { type: "state"; data: AppState }
   /** `message` is the English fallback; `code` + `params` are translated by the UI when known. */
   | { type: "toast"; level: ToastLevel; message: string; code?: string; params?: MessageParams }
+  /** Cached non-AppState data changed on the server (any client): refetch these. Unknown keys are ignored. */
+  | { type: "invalidate"; keys: string[] }
   | { type: "pong" };
 
 export type ClientMessage = { type: "ping" };

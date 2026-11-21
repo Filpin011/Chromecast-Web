@@ -1,11 +1,12 @@
 "use client";
 
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ServerMessage } from "@/lib/api/types";
 import { currentTranslator } from "@/i18n";
-import { translateErrorCode } from "@/lib/query";
+import { invalidateServerKeys, translateErrorCode } from "@/lib/query";
 import { StateSocket } from "@/lib/ws";
 import { useAppStore } from "@/stores/app-store";
 
@@ -27,8 +28,11 @@ export function toastText(msg: ToastMsg): string {
   return (msg.code && tr.maybe(`toast.${msg.code}`, params)) || msg.message;
 }
 
-/** Dispatch one `/ws` message into the store / toaster. Exported for tests. */
-export function handleServerMessage(msg: ServerMessage): void {
+/**
+ * Dispatch one `/ws` message into the store / toaster / query cache. Unknown message types are ignored.
+ * Exported for tests.
+ */
+export function handleServerMessage(msg: ServerMessage, queryClient?: QueryClient): void {
   switch (msg.type) {
     case "state":
       useAppStore.getState().applySnapshot(msg.data);
@@ -38,6 +42,9 @@ export function handleServerMessage(msg: ServerMessage): void {
       else if (msg.level === "success") toast.success(toastText(msg));
       else toast(toastText(msg));
       break;
+    case "invalidate":
+      if (queryClient && Array.isArray(msg.keys)) invalidateServerKeys(queryClient, msg.keys);
+      break;
     default:
       break;
   }
@@ -45,10 +52,17 @@ export function handleServerMessage(msg: ServerMessage): void {
 
 /** Keeps the zustand store in sync with the server through `/ws` (mounted once in the providers). */
 export function StateSocketBridge() {
+  const queryClient = useQueryClient();
   useEffect(() => {
     const socket = new StateSocket();
-    const offStatus = socket.onStatus((s) => useAppStore.getState().setConnection(s));
-    const offMsg = socket.onMessage(handleServerMessage);
+    let wasOpen = false;
+    const offStatus = socket.onStatus((s) => {
+      useAppStore.getState().setConnection(s);
+      // invalidates sent while we were offline are lost: refetch everything on a reconnect
+      if (s === "open" && wasOpen) invalidateServerKeys(queryClient);
+      if (s === "open") wasOpen = true;
+    });
+    const offMsg = socket.onMessage((msg) => handleServerMessage(msg, queryClient));
     socket.connect();
 
     // REST fallback so the UI has data even if the socket is slow to open.
@@ -72,6 +86,6 @@ export function StateSocketBridge() {
       offMsg();
       socket.close();
     };
-  }, []);
+  }, [queryClient]);
   return null;
 }
