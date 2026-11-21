@@ -30,6 +30,11 @@ async def import_playlist(body: m.PlaylistIn, s: Services = Depends(services)) -
     content = body.content if body.content and body.content.strip() else None
     if not url and not content:
         raise AppError(422, "Provide either 'url' or 'content'", "validation_error")
+    name, channels = await _load(s, url=url, content=content)
+    return s.db.create_playlist((body.name or "").strip() or name, url, channels)
+
+
+async def _load(s: Services, url: str | None = None, content: str | None = None) -> tuple[str, list[m.Channel]]:
     name, channels, is_hls = await s.resolver.load_m3u(url=url, content=content)
     if is_hls:
         raise AppError(
@@ -40,7 +45,7 @@ async def import_playlist(body: m.PlaylistIn, s: Services = Depends(services)) -
         )
     if not channels:
         raise AppError(400, "The playlist contains no channels", "resolve_failed", reason="empty_playlist")
-    return s.db.create_playlist((body.name or "").strip() or name, url, channels)
+    return name, channels
 
 
 @router.get("/{playlist_id}", response_model=m.Playlist)
@@ -67,7 +72,8 @@ async def refresh(playlist_id: str, s: Services = Depends(services)) -> m.Playli
     pl = _require(s, playlist_id)
     if not pl.source_url:
         raise AppError(400, "Playlist was imported from content: nothing to refresh", "no_source_url")
-    _, channels, _ = await s.resolver.load_m3u(url=pl.source_url)
+    # same checks as the import: a source that now serves nothing (or a stream) must not wipe the channels
+    _, channels = await _load(s, url=pl.source_url)
     result = s.db.replace_channels(playlist_id, channels)
     assert result is not None
     return result

@@ -247,6 +247,17 @@ async def test_m3u_returns_playlist_preview(http, tmp_path):
     assert len(res.channels) == 5
 
 
+async def test_pasted_m3u_text_returns_playlist_preview(http, tmp_path):
+    r = make(http, tmp_path)
+    res = await r.resolve(IPTV, kind="m3u")
+    assert isinstance(res, PlaylistResult) and len(res.channels) == 5
+    for text, code, reason in (("#EXTM3U\n", "resolve_failed", "empty_playlist"),
+                               (LIVE_MEDIA, "unsupported_source", "unsupported_input")):
+        with pytest.raises(AppError) as e:
+            await r.resolve(text)
+        assert (e.value.code, e.value.reason) == (code, reason)
+
+
 @respx.mock
 async def test_m3u_extension_with_hls_content_is_direct(http, tmp_path):
     respx.get("https://lists.example.com/stream.m3u").respond(200, text=LIVE_MEDIA)
