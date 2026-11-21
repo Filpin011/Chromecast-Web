@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Response, WebSocket, WebSocketDisconnect
 
@@ -104,6 +105,23 @@ async def favorite_stream(session_id: str, body: m.BrowserFavoriteIn, s: Service
             input=stream.page_url,
             source_kind="webpage",
             thumbnail=stream.thumbnail if (stream.thumbnail or "").startswith("http") else None,
+        )
+    )
+
+
+@router.post("/api/browser/sessions/{session_id}/favorite-site", response_model=m.Favorite, status_code=201)
+async def favorite_site(session_id: str, s: Services = Depends(services)) -> m.Favorite:
+    """Save the page the session is showing as a site favorite (reopened in the remote browser)."""
+    session = s.browser.get(session_id)
+    session.touch()
+    if not session.url.lower().startswith(("http://", "https://")):
+        raise AppError(400, "This page can't be saved as a favorite", "not_a_site")
+    return s.db.add_favorite(
+        m.FavoriteIn(
+            kind="site",
+            title=session.title or urlsplit(session.url).hostname or session.url,
+            input=session.url,
+            thumbnail=await session.favicon(),
         )
     )
 

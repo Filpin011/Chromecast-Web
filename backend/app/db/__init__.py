@@ -34,6 +34,7 @@ def _aware(dt: datetime) -> datetime:
 class FavoriteRow(SQLModel, table=True):
     __tablename__ = "favorites"
     id: str = Field(default_factory=_id, primary_key=True)
+    kind: str = "media"  # "media" | "site"
     title: str
     input: str
     source_kind: str
@@ -103,8 +104,15 @@ class Database:
         self._migrate()
 
     def _migrate(self) -> None:
-        """Additive column migrations for DBs created by older versions."""
-        added = {"channels": {"headers_json": "TEXT"}}
+        """Additive column migrations for DBs created by older versions.
+
+        SQLite fills a column added with a DEFAULT in every existing row, which is the backfill
+        (e.g. favorites saved before sites existed become kind "media").
+        """
+        added = {
+            "channels": {"headers_json": "TEXT"},
+            "favorites": {"kind": "VARCHAR NOT NULL DEFAULT 'media'"},
+        }
         with self.engine.begin() as conn:
             for table, cols in added.items():
                 have = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
@@ -155,6 +163,7 @@ class Database:
     def _fav(row: FavoriteRow) -> m.Favorite:
         return m.Favorite(
             id=row.id,
+            kind=row.kind or "media",  # type: ignore[arg-type]
             title=row.title,
             input=row.input,
             source_kind=row.source_kind,  # type: ignore[arg-type]
@@ -168,15 +177,33 @@ class Database:
         return [self._fav(r) for r in rows]
 
     def add_favorite(self, data: m.FavoriteIn) -> m.Favorite:
+        """Insert, or update the favorite of the same kind with the same input (no duplicates).
+
+        A site and a media favorite may share a URL: the media one casts the page's stream, the
+        site one reopens the page in the remote browser.
+        """
         with self.session() as s:
-            existing = s.exec(select(FavoriteRow).where(FavoriteRow.input == data.input)).first()
+            existing = s.exec(
+                select(FavoriteRow).where(FavoriteRow.input == data.input, FavoriteRow.kind == data.kind)
+            ).first()
             if existing:
                 existing.title = data.title
                 existing.thumbnail = data.thumbnail or existing.thumbnail
-                existing.source_kind = data.source_kind
+                existing.source_kind = data.source_kind or existing.source_kind
                 row = existing
             else:
                 row = FavoriteRow(**data.model_dump())
+            s.add(row)
+            s.commit()
+            s.refresh(row)
+        return self._fav(row)
+
+    def rename_favorite(self, fav_id: str, title: str) -> m.Favorite | None:
+        with self.session() as s:
+            row = s.get(FavoriteRow, fav_id)
+            if not row:
+                return None
+            row.title = title
             s.add(row)
             s.commit()
             s.refresh(row)

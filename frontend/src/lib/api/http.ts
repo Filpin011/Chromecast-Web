@@ -108,6 +108,9 @@ export class HttpClient {
   put<T>(path: string, body?: unknown, opts?: RequestOptions) {
     return this.request<T>("PUT", path, { ...opts, body });
   }
+  patch<T>(path: string, body?: unknown, opts?: RequestOptions) {
+    return this.request<T>("PATCH", path, { ...opts, body });
+  }
   delete<T = void>(path: string, opts?: RequestOptions) {
     return this.request<T>("DELETE", path, opts);
   }

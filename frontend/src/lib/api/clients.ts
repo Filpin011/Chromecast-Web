@@ -134,6 +134,9 @@ export class FavoritesApi extends Resource {
   add(req: FavoriteCreate) {
     return this.http.post<Favorite>("/api/favorites", req);
   }
+  rename(id: string, title: string) {
+    return this.http.patch<Favorite>(`/api/favorites/${enc(id)}`, { title });
+  }
   remove(id: string) {
     return this.http.delete(`/api/favorites/${enc(id)}`);
   }
@@ -193,6 +196,10 @@ export class BrowserApi extends Resource {
     return this.http.post<Favorite>(`/api/browser/sessions/${enc(id)}/favorite`, {
       stream_id: streamId,
     });
+  }
+  /** Save the page the session shows as a site favorite (upsert: no duplicates). */
+  favoriteSite(id: string) {
+    return this.http.post<Favorite>(`/api/browser/sessions/${enc(id)}/favorite-site`);
   }
   /** uBO-style "power button" for the current site (persisted server-side, page reloads). */
   setAdblock(id: string, enabled: boolean) {

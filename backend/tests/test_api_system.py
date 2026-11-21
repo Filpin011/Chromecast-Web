@@ -57,6 +57,51 @@ def test_favorites_crud_and_dedupe(client):
     assert client.post("/api/favorites", json={"title": "x", "input": "y", "source_kind": "bad"}).status_code == 422
 
 
+def test_site_favorites_create_dedupe_rename_delete(client):
+    media = client.post("/api/favorites", json={"title": "Live", "input": "https://tv.example.com/live",
+                                                "source_kind": "webpage"}).json()
+    assert media["kind"] == "media"
+    site = client.post("/api/favorites", json={"kind": "site", "title": " TV ", "input": "https://tv.example.com/live",
+                                               "thumbnail": "https://tv.example.com/favicon.ico"})
+    assert site.status_code == 201
+    site = site.json()
+    # a site never collides with the media favorite of the same URL, and is always a "webpage"
+    assert site["id"] != media["id"] and site["kind"] == "site" and site["source_kind"] == "webpage"
+    assert site["title"] == "TV" and site["thumbnail"] == "https://tv.example.com/favicon.ico"
+    again = client.post("/api/favorites", json={"kind": "site", "title": "TV Live", "input": "https://tv.example.com/live"})
+    assert again.json()["id"] == site["id"] and again.json()["thumbnail"] == "https://tv.example.com/favicon.ico"
+    favs = client.get("/api/favorites").json()
+    assert sorted(f["kind"] for f in favs) == ["media", "site"]
+    r = client.patch(f"/api/favorites/{site['id']}", json={"title": "  My TV  "})
+    assert r.status_code == 200 and r.json()["title"] == "My TV" and r.json()["kind"] == "site"
+    assert client.patch(f"/api/favorites/{site['id']}", json={"title": "  "}).status_code == 422
+    assert client.patch("/api/favorites/nope", json={"title": "x"}).json()["code"] == "favorite_not_found"
+    assert client.delete(f"/api/favorites/{site['id']}").status_code == 204
+    assert [f["id"] for f in client.get("/api/favorites").json()] == [media["id"]]
+    # a site needs an http(s) URL; a media favorite still needs its source_kind
+    assert client.post("/api/favorites", json={"kind": "site", "title": "x", "input": "javascript:alert(1)"}).status_code == 422
+    assert client.post("/api/favorites", json={"title": "x", "input": "https://x/a.mp4"}).status_code == 422
+    assert client.post("/api/favorites", json={"kind": "app", "title": "x", "input": "https://x"}).status_code == 422
+
+
+def test_old_favorites_are_backfilled_as_media(config: AppConfig):
+    import sqlite3
+
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(config.data_dir / "app.db")
+    db.execute("CREATE TABLE favorites (id VARCHAR PRIMARY KEY, title VARCHAR NOT NULL, input VARCHAR NOT NULL,"
+               " source_kind VARCHAR NOT NULL, thumbnail VARCHAR, created_at DATETIME NOT NULL)")
+    db.execute("INSERT INTO favorites VALUES ('old1', 'Rai 1', 'https://x/rai1.m3u8', 'direct', NULL,"
+               " '2025-01-01 10:00:00')")
+    db.commit()
+    db.close()
+    with TestClient(create_app(config)) as c:
+        favs = c.get("/api/favorites").json()
+        assert [(f["id"], f["kind"], f["source_kind"]) for f in favs] == [("old1", "media", "direct")]
+        site = c.post("/api/favorites", json={"kind": "site", "title": "S", "input": "https://x/rai1.m3u8"}).json()
+        assert site["kind"] == "site" and len(c.get("/api/favorites").json()) == 2
+
+
 def test_history_recorded_on_play_and_cleared(client):
     client.put("/api/settings", json={"show_idle_on_connect": False})
     r = client.post("/api/devices/fake-ultra-0001/play", json={"input": "https://cdn.example.com/a.mp4"})

@@ -1,20 +1,23 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Clock, Compass, Sparkles, Star } from "lucide-react";
+import { Clock, Compass, Globe, Sparkles, Star } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MediaResultCard, PlaylistResultCard, ResolveErrorCard, ResultSkeleton } from "@/components/cast/result-card";
 import { SmartInput } from "@/components/cast/smart-input";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { Thumb } from "@/components/common/thumb";
+import { SiteTiles } from "@/components/favorites/site-tiles";
 import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
 import { Button } from "@/components/ui/button";
 import { useAddFavorite, useFavorites, useHistory } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
 import { useDebounced } from "@/hooks/use-debounced";
 import { api } from "@/lib/api";
+import { browserHref, mediaFavorites, siteFavorites } from "@/lib/favorites";
 import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
 import { useT } from "@/i18n";
 import { autoResolvesWhileTyping, detectInput } from "@/lib/input-detect";
@@ -66,6 +69,9 @@ export default function CastPage() {
 
   const history = useHistory(6);
   const favorites = useFavorites();
+  const media = mediaFavorites(favorites.data);
+  const sites = siteFavorites(favorites.data);
+  const router = useRouter();
 
   return (
     <>
@@ -136,10 +142,16 @@ export default function CastPage() {
           </Section>
         )}
 
-        {(favorites.data?.length ?? 0) > 0 && (
+        {sites.length > 0 && (
+          <Section title={t("sites.title")} icon={Globe} href="/library/?tab=sites">
+            <SiteTiles sites={sites.slice(0, 12)} onOpen={(url) => router.push(browserHref(url))} />
+          </Section>
+        )}
+
+        {media.length > 0 && (
           <Section title={t("cast.favorites")} icon={Star} href="/library/?tab=favorites">
             <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
-              {favorites.data?.slice(0, 12).map((f) => (
+              {media.slice(0, 12).map((f) => (
                 <button
                   key={f.id}
                   type="button"

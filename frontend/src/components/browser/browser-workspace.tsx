@@ -58,6 +58,7 @@ import { KeyboardBar } from "./keyboard-bar";
 import { PopupPrompt } from "./popup-prompt";
 import { PreviewDialog } from "./preview-dialog";
 import { RemoteView } from "./remote-view";
+import { SiteFavoriteButton } from "./site-favorite-button";
 import { useStreamActions } from "./stream-actions";
 import { StreamPanel } from "./stream-panel";
 import { UrlField } from "./url-field";
@@ -273,6 +274,7 @@ export function BrowserWorkspace({
             url={session.url}
             onNavigate={(url) => navigate({ url })}
             onReload={() => navigate({ action: "reload" })}
+            actions={<SiteFavoriteButton sessionId={session.id} url={session.url} />}
           />
           <AdblockButton
             url={session.url}

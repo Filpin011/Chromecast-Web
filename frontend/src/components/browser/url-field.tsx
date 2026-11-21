@@ -1,7 +1,7 @@
 "use client";
 
 import { Globe, Lock, RotateCw } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { normalizeUrl } from "@/lib/url";
@@ -15,10 +15,13 @@ export function UrlField({
   url,
   onNavigate,
   onReload,
+  actions,
 }: {
   url: string;
   onNavigate: (url: string) => void;
   onReload?: () => void;
+  /** Extra always-visible controls inside the pill, before reload (e.g. the favorite star). */
+  actions?: ReactNode;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
@@ -60,13 +63,14 @@ export function UrlField({
         }}
         className={cn(
           "flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm",
-          onReload && "min-[400px]:pr-0",
+          actions ? "pr-0" : onReload && "min-[400px]:pr-0",
         )}
         aria-label={t("url.addressEdit", { url })}
       >
         {secure ? <Lock className="size-3.5 shrink-0 text-muted-foreground" /> : <Globe className="size-3.5 shrink-0 text-muted-foreground" />}
         <span className="truncate font-medium">{hostOf(url) || t("url.newPage")}</span>
       </button>
+      {actions}
       {onReload && (
         <button
           type="button"
