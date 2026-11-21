@@ -116,7 +116,7 @@ function PlaylistView() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t("playlists.searchChannel")}
-              className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40"
+              className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40 [&::-webkit-search-cancel-button]:appearance-none"
             />
             {q && (
               <button type="button" aria-label={t("common.clearSearch")} onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
