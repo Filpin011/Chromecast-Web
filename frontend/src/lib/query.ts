@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, type QueryKey } from "@tanstack/react-query";
 import { currentTranslator, t, type Translator } from "@/i18n";
 import { ApiError } from "@/lib/api";
 import type { MessageParams } from "@/lib/api/types";
@@ -14,6 +14,25 @@ export const qk = {
   local: (path: string) => ["local", path] as const,
   browserSessions: ["browser", "sessions"] as const,
 };
+
+/**
+ * Server `invalidate` keys (docs/ARCHITECTURE.md, `/ws`) → the query keys they cover. Prefix match:
+ * "playlists" also refreshes each playlist and its channel pages, "history" every `limit`.
+ */
+export const INVALIDATE_QUERY_KEYS: Readonly<Record<string, QueryKey>> = {
+  settings: qk.settings,
+  favorites: qk.favorites,
+  history: qk.history,
+  playlists: qk.playlists,
+};
+
+/** Refetch the queries behind server `invalidate` keys; unknown keys are ignored. */
+export function invalidateServerKeys(client: QueryClient, keys: readonly string[] = Object.keys(INVALIDATE_QUERY_KEYS)): void {
+  for (const key of new Set(keys)) {
+    const queryKey = Object.hasOwn(INVALIDATE_QUERY_KEYS, key) ? INVALIDATE_QUERY_KEYS[key] : undefined;
+    if (queryKey) void client.invalidateQueries({ queryKey });
+  }
+}
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -49,6 +68,7 @@ export const ERROR_CODES = [
   "queue_item_not_found",
   "not_manual",
   "favorite_not_found",
+  "history_not_found",
   "not_a_site",
   "no_source_url",
   "forbidden_path",

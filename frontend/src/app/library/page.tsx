@@ -19,6 +19,7 @@ import {
   useHistory,
   useLocalAvailable,
   useRemoveFavorite,
+  useRemoveHistoryEntry,
 } from "@/hooks/queries";
 import { useDevices } from "@/hooks/use-app-state";
 import { useCast } from "@/hooks/use-cast";
@@ -43,6 +44,7 @@ function LibraryInner() {
   const removeFav = useRemoveFavorite();
   const addFav = useAddFavorite();
   const clear = useClearHistory();
+  const removeHistory = useRemoveHistoryEntry();
   const { cast, busy } = useCast();
   const devices = useDevices();
   const localAvailable = useLocalAvailable();
@@ -138,6 +140,8 @@ function LibraryInner() {
                 onCast={() => cast({ input: h.input, kind: h.source_kind, title: h.title })}
                 onQueue={() => cast({ input: h.input, kind: h.source_kind, title: h.title, enqueue: true })}
                 onFavorite={() => addFav.mutate({ title: h.title, input: h.input, source_kind: h.source_kind, thumbnail: h.thumbnail })}
+                onDelete={() => removeHistory.mutate(h.id)}
+                deleteLabel={t("library.removeFromHistory")}
               />
             ))
           ) : (

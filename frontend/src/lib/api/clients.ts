@@ -146,6 +146,9 @@ export class HistoryApi extends Resource {
   list(limit = 50) {
     return this.http.get<HistoryEntry[]>("/api/history", { query: { limit } });
   }
+  remove(id: string) {
+    return this.http.delete(`/api/history/${enc(id)}`);
+  }
   clear() {
     return this.http.delete("/api/history");
   }

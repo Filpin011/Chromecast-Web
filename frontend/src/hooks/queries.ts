@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import type { FavoriteCreate, PlaylistImportRequest, Settings } from "@/lib/api/types";
+import type { FavoriteCreate, HistoryEntry, PlaylistImportRequest, Settings } from "@/lib/api/types";
 import { currentTranslator, t } from "@/i18n";
 import { siteFavoriteFor } from "@/lib/favorites";
 import { errorMessage, qk } from "@/lib/query";
@@ -133,6 +133,24 @@ export function useSiteFavorite(sessionId: string, url: string) {
 
 export function useHistory(limit = 50) {
   return useQuery({ queryKey: [...qk.history, limit], queryFn: () => api.history.list(limit) });
+}
+
+export function useRemoveHistoryEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.history.remove(id),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: qk.history });
+      const prev = qc.getQueriesData<HistoryEntry[]>({ queryKey: qk.history });
+      for (const [key, list] of prev) if (list) qc.setQueryData(key, list.filter((h) => h.id !== id));
+      return { prev };
+    },
+    onError: (e, _id, ctx) => {
+      for (const [key, list] of ctx?.prev ?? []) qc.setQueryData(key, list);
+      toast.error(errorMessage(e));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.history }),
+  });
 }
 
 export function useClearHistory() {

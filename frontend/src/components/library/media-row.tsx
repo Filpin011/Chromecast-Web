@@ -15,17 +15,19 @@ export interface MediaRowProps {
   onFavorite?: () => void;
   onRename?: () => void;
   onDelete?: () => void;
+  /** Menu label of `onDelete` (default "Delete"). */
+  deleteLabel?: string;
   disabled?: boolean;
 }
 
 /** A castable item as a `ListRow` (tap = cast) with queue / favorite / rename / delete in its menu. */
-export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onRename, onDelete, disabled }: MediaRowProps) {
+export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onRename, onDelete, deleteLabel, disabled }: MediaRowProps) {
   const t = useT();
   const actions: RowAction[] = [];
   if (onQueue) actions.push({ label: t("media.addToQueue"), icon: ListPlus, onClick: onQueue });
   if (onFavorite) actions.push({ label: t("media.addToFavorites"), icon: Star, onClick: onFavorite });
   if (onRename) actions.push({ label: t("favorites.rename"), icon: Pencil, onClick: onRename });
-  if (onDelete) actions.push({ label: t("common.delete"), icon: Trash2, onClick: onDelete, destructive: true });
+  if (onDelete) actions.push({ label: deleteLabel ?? t("common.delete"), icon: Trash2, onClick: onDelete, destructive: true });
   return (
     <ListRow
       leading={<Thumb src={thumbnail} alt="" className="aspect-video h-12" />}
