@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { emitCastEvent } from "@/lib/cast-events";
 import type { Channel, PlayerState, Settings, SourceKind } from "@/lib/api/types";
 import { haptic } from "@/lib/haptics";
 import { t } from "@/i18n";
@@ -60,7 +61,11 @@ export function useCast() {
   const withDevice = useCallback(
     async (label: string, fn: (deviceId: string) => Promise<PlayerState>, enqueue?: boolean) => {
       const deviceId = await ensureDevice(qc.getQueryData<Settings>(qk.settings));
-      if (!deviceId) return null;
+      if (!deviceId) {
+        if (!enqueue) emitCastEvent({ type: "cancel" });
+        return null;
+      }
+      if (!enqueue) emitCastEvent({ type: "device", deviceId });
       setBusy(true);
       haptic(12);
       // optimistic loading indicator until the first PLAYING (an enqueue may not play at all)
@@ -78,10 +83,13 @@ export function useCast() {
           description: p.title ?? label,
         });
         qc.invalidateQueries({ queryKey: qk.history });
+        if (!enqueue) emitCastEvent({ type: "ok", player: p });
         return p;
       } catch (err) {
         if (!enqueue) useAppStore.getState().clearPendingLoad(deviceId);
-        toast.error(errorMessage(err, t("cast.failed")), { id, description: label });
+        const message = errorMessage(err, t("cast.failed"));
+        toast.error(message, { id, description: label });
+        if (!enqueue) emitCastEvent({ type: "error", message });
         return null;
       } finally {
         setBusy(false);

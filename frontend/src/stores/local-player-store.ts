@@ -21,6 +21,11 @@ export interface LocalMedia {
    * media (null for live), so the TV can carry on from there. Missing = no such button.
    */
   onCast?: (resumeAt: number | null) => void;
+  /**
+   * After "Send to TV" the player stays open until the Chromecast plays the media, then closes and calls
+   * this (e.g. to open Now Playing). Without it the mini player takes over.
+   */
+  onCastStarted?: () => void;
 }
 
 interface LocalPlayerStore {

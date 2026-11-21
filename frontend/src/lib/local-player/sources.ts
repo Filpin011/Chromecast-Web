@@ -2,6 +2,7 @@
 import { toast } from "sonner";
 import { t } from "@/i18n";
 import { api } from "@/lib/api";
+import { emitCastEvent } from "@/lib/cast-events";
 import type { CapturedStream, Channel, ControlAction, PlayerState, SourceKind } from "@/lib/api/types";
 import { channelInput } from "@/lib/channels";
 import { errorMessage } from "@/lib/query";
@@ -12,8 +13,10 @@ import { useUiStore } from "@/stores/ui-store";
 /** Below this, "carry on from here" isn't worth a seek. */
 const MIN_RESUME = 5;
 
-async function control(deviceId: string, action: ControlAction, value?: number) {
-  useAppStore.getState().applyPlayer(await api.player.control(deviceId, action, value));
+async function control(deviceId: string, action: ControlAction, value?: number): Promise<PlayerState> {
+  const p = await api.player.control(deviceId, action, value);
+  useAppStore.getState().applyPlayer(p);
+  return p;
 }
 
 /** After a cast started (`p`), carry on from the position reached on this device (on-demand only). */
@@ -41,16 +44,20 @@ export function tvMedia(deviceId: string, player: PlayerState, position: number)
     source: resolvedSource(player.original_input),
     onCast: (resumeAt) => {
       void (async () => {
+        emitCastEvent({ type: "device", deviceId });
         try {
           if (live) await control(deviceId, "go_live");
           else if (resumeAt != null) await control(deviceId, "seek", resumeAt);
-          await control(deviceId, "play");
-          useUiStore.getState().setNowPlayingOpen(true);
+          emitCastEvent({ type: "ok", player: await control(deviceId, "play") });
         } catch (e) {
-          toast.error(errorMessage(e, t("player.commandFailed")));
+          const message = errorMessage(e, t("player.commandFailed"));
+          toast.error(message);
+          emitCastEvent({ type: "error", message });
         }
       })();
     },
+    // once the TV plays again and the local player has closed, back to the TV's remote
+    onCastStarted: () => useUiStore.getState().setNowPlayingOpen(true),
   };
 }
 
