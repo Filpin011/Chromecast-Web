@@ -53,7 +53,8 @@ with a built-in remote browser that finds the video inside web pages for you.
 - Play/pause, seek, ±10 s, *Go live*, volume, subtitles and audio tracks, previous/next.
 - Server-side **queue** (reorder, remove), **favorites**, **history**, an **idle image** on the TV.
 - **Saved sites**: star a page in the remote browser and reopen it in one tap from Home or the Library.
-- Every open phone, tablet and PC stays **in sync in real time** over WebSocket.
+- Every open phone, tablet and PC stays **in sync in real time** over WebSocket: playback, queue, favorites, history,
+  playlists and settings.
 - **Never looks frozen**: *Loading…*, *Slow connection…* and *Reconnecting… attempt 1/3* right on the player.
 - **Live streams come back on their own**: when the Chromecast drops a live stream (a stalled segment, a CDN hiccup)
   the server reloads it, up to 3 times, before giving up.

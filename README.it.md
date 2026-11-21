@@ -54,7 +54,8 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
 - Play/pausa, seek, ±10 s, *Vai al live*, volume, sottotitoli e tracce audio, precedente/successivo.
 - **Coda** lato server (riordina, rimuovi), **preferiti**, **cronologia**, **immagine di attesa** sulla TV.
 - **Siti salvati**: metti una stella a una pagina nel browser remoto e riaprila con un tocco dalla Home o dalla Libreria.
-- Tutti i telefoni, tablet e PC aperti restano **sincronizzati in tempo reale** via WebSocket.
+- Tutti i telefoni, tablet e PC aperti restano **sincronizzati in tempo reale** via WebSocket: riproduzione, coda,
+  preferiti, cronologia, playlist e impostazioni.
 - **Non sembra mai bloccato**: *Caricamento…*, *Connessione lenta…* e *Riconnessione… tentativo 1/3* direttamente
   sul player.
 - **Le dirette ripartono da sole**: se il Chromecast perde una diretta (un segmento bloccato, un intoppo del CDN) il
