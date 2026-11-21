@@ -8,6 +8,7 @@ import {
   pageSize,
   viewportMismatch,
   viewportMode,
+  renderScale,
 } from "@/lib/browser-session";
 import { qualityLabel, rankCaptured, upsertCaptured } from "@/lib/captured";
 import type { BrowserSession, CapturedStream } from "@/lib/api/types";
@@ -185,5 +186,21 @@ describe("clearing and demuxed renditions", () => {
     const subs = makeCaptured({ id: "subs", media_type: "subtitles", score: 98, height: null });
     const video = makeCaptured({ id: "video", kind: "progressive", score: 1 });
     expect(rankCaptured([audio, subs, video]).map((c) => c.id)).toEqual(["video", "audio", "subs"]);
+  });
+});
+
+describe("renderScale", () => {
+  const screen = (width: number, dpr: number) => ({ width, height: 900, insetTop: 0, insetBottom: 0, dpr });
+  it("renders a phone-wide page at the screen's density, capped at 2", () => {
+    expect(renderScale({ width: 390, height: 700 }, screen(390, 3))).toBe(2);
+    expect(renderScale({ width: 390, height: 700 }, screen(390, 1))).toBe(1);
+  });
+  it("renders a desktop page on a tablet at the density it is actually shown at", () => {
+    // 1280 px page drawn 820 px wide on a 2x screen = 1640 device px -> 1.25
+    expect(renderScale({ width: 1280, height: 720 }, screen(820, 2))).toBe(1.25);
+  });
+  it("fitViewport adds the scale only when sharper than 1x", () => {
+    expect(fitViewport("mobile", screen(390, 2))).toMatchObject({ width: 390, scale: 2 });
+    expect(fitViewport("mobile", screen(390, 1))).not.toHaveProperty("scale");
   });
 });

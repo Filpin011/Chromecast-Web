@@ -32,7 +32,7 @@ def create(client):
 
 def test_session_rest_lifecycle(client):
     sid, sess = create(client)
-    assert sess["viewport"] == {"width": 390, "height": 844} and sess["title"] == "Canale Live"
+    assert sess["viewport"] == {"width": 390, "height": 844, "scale": 1.0} and sess["title"] == "Canale Live"
     stream = sess["captured"][0]
     assert stream["url"] == M3U8 and stream["is_live"] is True and stream["quality"] == "720p HD"
     assert stream["preview_url"].startswith("/proxy/")

@@ -280,6 +280,8 @@ export interface CapturedStream {
 export interface Viewport {
   width: number;
   height: number;
+  /** Render/stream density (device px per CSS px, 1..2): frames are width*scale × height*scale. */
+  scale?: number;
 }
 
 export interface PopupRequest {

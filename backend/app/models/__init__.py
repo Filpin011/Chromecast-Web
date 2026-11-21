@@ -335,6 +335,9 @@ class Health(Model):
 class Viewport(Model):
     width: int = Field(default=390, ge=200, le=2560)
     height: int = Field(default=844, ge=200, le=2560)
+    # the viewer's device pixel ratio (capped at 2): the page is rendered and streamed at
+    # width*scale x height*scale, so text stays sharp on retina phones/tablets; input stays in CSS px
+    scale: float = Field(default=1.0, ge=1.0, le=2.0)
 
 
 class CapturedStream(Model):

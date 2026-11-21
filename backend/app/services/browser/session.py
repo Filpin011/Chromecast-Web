@@ -43,6 +43,22 @@ NAV_GRACE = 4.0  # s after an explicit navigate() during which JS redirects are 
 POPUP_HOLD_TIMEOUT = 6.0  # a held popup that never navigates is closed
 MAX_PENDING_POPUPS = 5
 CLOSE_TIMEOUT = 1.0
+# Screencast pacing. Chromium sends the next frame only after the previous one is acked; we ack
+# once every viewer has actually been sent the frame (never faster than MAX_FPS), so frames follow
+# what the phone's link and decoder can take instead of piling up (60 fps x 100 KB on animated pages).
+MAX_FPS = 30
+FRAME_ACK_TIMEOUT = 1.0  # a viewer that doesn't take a frame within this doesn't hold the others
+# JPEG quality: 1x frames need more to keep text legible; 2x frames are sharp at a lower setting
+# (measured on a news page at 768x1000: ~60 KB at 1x/q70, ~100 KB at 2x/q62)
+SCREENCAST_QUALITY = 70
+SCREENCAST_QUALITY_HIDPI = 62
+# Adaptive resolution (scale > 1 viewers): while the page keeps changing (scrolling, animations,
+# a playing video) frames are encoded at 1x, which is what made a 2x screencast cost ~4 CPU cores on a
+# busy page; once it is still for STILL_AFTER s one sharp frame at the viewer's scale is sent.
+MOTION_FPS = 6  # frames in the last second that count as "moving"
+STILL_AFTER = 0.5
+# input kinds handled in order by the session's input worker; consecutive scrolls are merged
+POINTER_INPUTS = ("click", "tap", "scroll", "key", "text", "mousemove")
 
 STOP_MEDIA_JS = """
 () => { for (const m of document.querySelectorAll('video, audio')) { try { m.pause(); m.muted = true; } catch (e) {} } }
@@ -179,6 +195,20 @@ class RemoteBrowserSession:
         self._held: set[Any] = set()  # popup pages waiting for a policy decision
         self._own_pages: set[Any] = set()  # pages we opened ourselves (never treated as popups)
         self._last_input = 0.0
+        # screencast pacing (see MAX_FPS) and the ordered input queue (see _input_worker)
+        self._frame_seq = 0
+        self._ack_pending: deque[tuple[Any, int, int]] = deque()  # (cdp, sessionId, seq), oldest first
+        self._ack_waiting: set[ViewerQueue] = set()  # viewers not yet sent frame _waiting_seq
+        self._waiting_seq = 0
+        self._delivered_seq = 0  # every frame up to this one reached all viewers (or timed out)
+        self._ack_timer: asyncio.TimerHandle | None = None
+        self._deliver_timer: asyncio.TimerHandle | None = None
+        self._last_ack = 0.0
+        self._sharp = True  # screencast at the viewer's scale (False: 1x while the page moves)
+        self._recent_frames: deque[float] = deque(maxlen=16)
+        self._still_timer: asyncio.TimerHandle | None = None
+        self._inputs: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self._input_task: asyncio.Task[None] | None = None
         self._nav_allowed_until = 0.0
         self._allowed_urls: set[str] = set()
         self._opening_own = False
@@ -253,6 +283,7 @@ class RemoteBrowserSession:
             await self.context.add_init_script(adblock.POPUP_GUARD_JS)
         page = await self._new_own_page()
         await self._attach(page)
+        self._input_task = self._spawn(self._input_worker())
         await self.navigate(url)
 
     async def _new_own_page(self) -> Any:
@@ -281,6 +312,9 @@ class RemoteBrowserSession:
         self._broadcast({"type": "closed"})
         if self._blocked_flush is not None:
             self._blocked_flush.cancel()
+        for timer in (self._still_timer, self._ack_timer, self._deliver_timer):
+            if timer is not None:
+                timer.cancel()
         for t in list(self._tasks):
             t.cancel()
         teardown = asyncio.ensure_future(self._teardown())
@@ -308,11 +342,12 @@ class RemoteBrowserSession:
             self._shot_task = asyncio.create_task(self._screenshot_loop())
 
     def _screencast_params(self) -> dict[str, Any]:
+        scale = self.viewport.scale if self._sharp else 1.0
         return {
             "format": "jpeg",
-            "quality": 60,
-            "maxWidth": self.viewport.width,
-            "maxHeight": self.viewport.height,
+            "quality": SCREENCAST_QUALITY if scale <= 1 else SCREENCAST_QUALITY_HIDPI,
+            "maxWidth": round(self.viewport.width * scale),
+            "maxHeight": round(self.viewport.height * scale),
             "everyNthFrame": 1,
         }
 
@@ -354,10 +389,88 @@ class RemoteBrowserSession:
             if cdp is not None and "sessionId" in params:
                 self._spawn(self._ack(cdp, params["sessionId"]))
             return
+        self._frame_seq += 1
+        frame["seq"] = self._frame_seq
+        self._track_motion()
         self._last_frame = frame
         self._broadcast(frame)
         if cdp is not None and "sessionId" in params:
-            self._spawn(self._ack(cdp, params["sessionId"]))
+            self._ack_pending.append((cdp, params["sessionId"], self._frame_seq))
+            self._waiting_seq = self._frame_seq
+            self._ack_waiting = set(self._subscribers)
+            if self._deliver_timer is not None:
+                self._deliver_timer.cancel()
+                self._deliver_timer = None
+            if not self._ack_waiting:
+                self._mark_delivered(self._frame_seq)
+            else:
+                with contextlib.suppress(RuntimeError):
+                    self._deliver_timer = asyncio.get_running_loop().call_later(
+                        FRAME_ACK_TIMEOUT, self._mark_delivered, self._frame_seq
+                    )
+
+    def _track_motion(self) -> None:
+        """Switch the screencast between 1x (moving page) and the viewer's scale (still page)."""
+        if self.viewport.scale <= 1 or not self._screencast_ok:
+            return
+        now = time.monotonic()
+        self._recent_frames.append(now)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # pragma: no cover
+            return
+        if self._still_timer is not None:
+            self._still_timer.cancel()
+        self._still_timer = loop.call_later(STILL_AFTER, self._on_still)
+        if self._sharp and sum(1 for t in self._recent_frames if now - t <= 1.0) >= MOTION_FPS:
+            self._sharp = False
+            log.debug("browser session %s: page moving, screencast at 1x", self.id)
+            self._spawn(self._refresh_screencast())
+
+    def _on_still(self) -> None:
+        self._still_timer = None
+        if not self._sharp and not self.closed:
+            self._sharp = True
+            self._recent_frames.clear()
+            log.debug("browser session %s: page still, sharp frame at %sx", self.id, self.viewport.scale)
+            self._spawn(self._refresh_screencast())
+
+    def frame_delivered(self, viewer: ViewerQueue, seq: Any) -> None:
+        """Called by the WebSocket sender once it has sent frame ``seq`` to ``viewer``."""
+        if seq != self._waiting_seq:
+            return
+        self._ack_waiting.discard(viewer)
+        if not self._ack_waiting:
+            self._mark_delivered(seq)
+
+    def _mark_delivered(self, seq: int) -> None:
+        if seq == self._waiting_seq and self._deliver_timer is not None:
+            self._deliver_timer.cancel()
+            self._deliver_timer = None
+        self._delivered_seq = max(self._delivered_seq, seq)
+        self._schedule_ack()
+
+    def _schedule_ack(self) -> None:
+        """Ack one delivered frame per 1/MAX_FPS: Chromium keeps a couple of frames in flight and
+        sends one new frame per ack, so the ack rate is the frame rate."""
+        if self._ack_timer is not None or not self._ack_pending:
+            return
+        if self._ack_pending[0][2] > self._delivered_seq:
+            return  # wait for the viewers
+        wait = max(0.0, self._last_ack + 1 / MAX_FPS - time.monotonic())
+        try:
+            self._ack_timer = asyncio.get_running_loop().call_later(wait, self._ack_next)
+        except RuntimeError:  # pragma: no cover - no loop (sync tests)
+            self._ack_next()
+
+    def _ack_next(self) -> None:
+        self._ack_timer = None
+        if not self._ack_pending or self._ack_pending[0][2] > self._delivered_seq:
+            return
+        cdp, session_id, _ = self._ack_pending.popleft()
+        self._last_ack = time.monotonic()
+        self._spawn(self._ack(cdp, session_id))
+        self._schedule_ack()
 
     @staticmethod
     async def _ack(cdp: Any, session_id: int) -> None:
@@ -395,6 +508,10 @@ class RemoteBrowserSession:
     def unsubscribe(self, q: ViewerQueue) -> None:
         self._subscribers.discard(q)
         self.touch()
+        if q in self._ack_waiting:
+            self._ack_waiting.discard(q)
+            if not self._ack_waiting:
+                self._mark_delivered(self._waiting_seq)
 
     @property
     def has_subscribers(self) -> bool:
@@ -730,7 +847,6 @@ class RemoteBrowserSession:
     # ------------------------------------------------------------ input
     async def handle_input(self, msg: dict[str, Any]) -> None:
         self.touch()
-        page = self.page
         kind = msg.get("type")
         if kind == "popup_decision":
             decision = msg.get("decision")
@@ -741,6 +857,40 @@ class RemoteBrowserSession:
         if kind == "stop_media":
             await self.stop_media()
             return
+        if kind in POINTER_INPUTS:
+            # ordered and off the WebSocket loop: a burst of scrolls can't delay the next frame or tap
+            self._inputs.put_nowait(msg)
+            return
+
+    async def _input_worker(self) -> None:
+        """Run viewer input in order. Scrolls (and mouse moves) queued behind each other are merged
+        into one: a 1 s drag sends ~60 of them, and replaying each with its own round trips left the
+        page up to a second behind the finger."""
+        while not self.closed:
+            msg = await self._inputs.get()
+            taken = 1
+            kind = msg.get("type")
+            if kind in ("scroll", "mousemove"):
+                while not self._inputs.empty():
+                    nxt = self._inputs._queue[0]  # type: ignore[attr-defined]  # peek
+                    if nxt.get("type") != kind:
+                        break
+                    self._inputs.get_nowait()
+                    taken += 1
+                    if kind == "scroll":
+                        with contextlib.suppress(TypeError, ValueError):
+                            nxt = {**nxt, "dx": float(msg.get("dx", 0)) + float(nxt.get("dx", 0)),
+                                   "dy": float(msg.get("dy", 0)) + float(nxt.get("dy", 0))}
+                    msg = nxt
+            try:
+                await self._dispatch_input(msg)
+            finally:
+                for _ in range(taken):
+                    self._inputs.task_done()
+
+    async def _dispatch_input(self, msg: dict[str, Any]) -> None:
+        page = self.page
+        kind = msg.get("type")
         if kind in ("click", "tap", "key", "text"):
             self._last_input = time.monotonic()
         try:
@@ -755,8 +905,16 @@ class RemoteBrowserSession:
                 except Exception:
                     await page.mouse.click(x, y)
             elif kind == "scroll":
-                await page.mouse.move(float(msg.get("x", 0)), float(msg.get("y", 0)))
-                await page.mouse.wheel(float(msg.get("dx", 0)), float(msg.get("dy", 0)))
+                x, y = float(msg.get("x", 0)), float(msg.get("y", 0))
+                dx, dy = float(msg.get("dx", 0)), float(msg.get("dy", 0))
+                if self.cdp is not None:  # one round trip instead of move + wheel
+                    await self.cdp.send(
+                        "Input.dispatchMouseEvent",
+                        {"type": "mouseWheel", "x": x, "y": y, "deltaX": dx, "deltaY": dy},
+                    )
+                else:
+                    await page.mouse.move(x, y)
+                    await page.mouse.wheel(dx, dy)
             elif kind == "key":
                 await page.keyboard.press(str(msg["key"]))
             elif kind == "text":
@@ -990,7 +1148,7 @@ class BrowserManager:
                 )
             vp = viewport or Viewport()
             try:
-                context = await self.provider.new_context(vp.width, vp.height, vp.width < 800)
+                context = await self.provider.new_context(vp.width, vp.height, vp.width < 800, vp.scale)
             except Exception as exc:
                 raise AppError(503, f"Could not start the browser: {exc}", "browser_unavailable") from exc
             session = RemoteBrowserSession(

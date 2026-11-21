@@ -82,7 +82,11 @@ async def test_create_screencast_capture_and_enrich():
     assert {c["url"] for c in captured} == {"https://cdn.example.com/vod/movie.mp4"}
     assert captured[-1]["width"] == 1280 and captured[-1]["quality"] == "720p HD"  # from <video>.videoHeight
     frame = next(m for m in msgs if m["type"] == "frame")
-    assert frame == {"type": "frame", "data": "QUJD", "width": 390, "height": 844}
+    assert frame == {"type": "frame", "data": "QUJD", "width": 390, "height": 844, "seq": frame["seq"]}
+    # acked only once the viewer was sent the frame (pacing follows the phone)
+    assert ("Page.screencastFrameAck", {"sessionId": 7}) not in cdp.sent
+    s.frame_delivered(q, frame["seq"])
+    await asyncio.sleep(0.05)
     assert ("Page.screencastFrameAck", {"sessionId": 7}) in cdp.sent
     # a late subscriber immediately gets the session and the last frame
     q2 = s.subscribe()
@@ -108,11 +112,12 @@ async def test_input_forwarding_mobile_and_desktop():
         {"type": "unknown"},
     ]:
         await mobile.handle_input(msg)
+    await mobile._inputs.join()
+    wheel = {"type": "mouseWheel", "x": 5.0, "y": 5.0, "deltaX": 0.0, "deltaY": 300.0}
+    assert ("Input.dispatchMouseEvent", wheel) in mobile.cdp.sent  # one CDP call per scroll
     assert page.input_log == [
         ("touchscreen.tap", 10.0, 20.0),
         ("mouse.click", 1.0, 2.0, "right"),
-        ("mouse.move", 5.0, 5.0),
-        ("mouse.wheel", 0.0, 300.0),
         ("keyboard.press", "Enter"),
         ("keyboard.type", "ciao"),
         ("mouse.move", 3.0, 4.0),
@@ -120,7 +125,33 @@ async def test_input_forwarding_mobile_and_desktop():
     desktop = await mgr.create(PAGE, Viewport(width=1280, height=720))
     dpage = prov.contexts[1].pages[0]
     await desktop.handle_input({"type": "tap", "x": 1, "y": 1})
+    await desktop._inputs.join()
     assert dpage.input_log == [("mouse.click", 1.0, 1.0)]
+    await mgr.shutdown()
+
+
+async def test_queued_scrolls_are_merged_and_order_is_kept():
+    prov = site()
+    mgr = manager(prov)
+    s = await mgr.create(PAGE)
+    page = prov.contexts[0].pages[0]
+    s.cdp.sent.clear()
+    # a 1 s drag arrives faster than it can be replayed: queued scrolls collapse into one
+    for msg in [{"type": "scroll", "x": 5, "y": 5, "dx": 0, "dy": 25}] * 10 + [{"type": "tap", "x": 1, "y": 2}]:
+        s._inputs.put_nowait(msg)
+    await s._inputs.join()
+    wheels = [p for m, p in s.cdp.sent if m == "Input.dispatchMouseEvent"]
+    assert wheels == [{"type": "mouseWheel", "x": 5.0, "y": 5.0, "deltaX": 0.0, "deltaY": 250.0}]
+    assert page.input_log == [("touchscreen.tap", 1.0, 2.0)]  # the tap still runs, after the scroll
+    await mgr.shutdown()
+
+
+async def test_viewport_scale_renders_sharper_frames():
+    prov = site()
+    mgr = manager(prov)
+    s = await mgr.create(PAGE, Viewport(width=400, height=800, scale=2))
+    params = s._screencast_params()
+    assert (params["maxWidth"], params["maxHeight"]) == (800, 1600)
     await mgr.shutdown()
 
 
@@ -532,4 +563,23 @@ async def test_clear_captured_cancels_pending_thumbnails_and_broadcasts():
     s._on_request(FakeRequest("https://cdn.example.com/vod/movie.mp4", {}, FakeFrame(PAGE)), "video/mp4")
     await settle()
     assert [c.url for c in s.captured] == ["https://cdn.example.com/vod/movie.mp4"]
+    await mgr.shutdown()
+
+
+async def test_moving_page_streams_at_1x_then_one_sharp_frame(monkeypatch):
+    from app.services.browser import session as session_mod
+
+    monkeypatch.setattr(session_mod, "STILL_AFTER", 0.05)
+    prov = site()
+    mgr = manager(prov)
+    s = await mgr.create(PAGE, Viewport(width=400, height=800, scale=2))
+    cdp = s.cdp
+    starts = lambda: [p for m, p in cdp.sent if m == "Page.startScreencast"]  # noqa: E731
+    assert starts()[-1]["maxWidth"] == 800  # still page: sharp
+    for i in range(session_mod.MOTION_FPS):  # an animated page: frames keep coming
+        cdp.emit("Page.screencastFrame", {"data": "QUJD", "sessionId": i, "metadata": {"deviceWidth": 400}})
+    await asyncio.sleep(0.01)
+    assert starts()[-1]["maxWidth"] == 400  # moving: 1x, cheap to encode
+    await asyncio.sleep(0.1)  # no frame for STILL_AFTER
+    assert starts()[-1]["maxWidth"] == 800  # one sharp frame of the still page
     await mgr.shutdown()

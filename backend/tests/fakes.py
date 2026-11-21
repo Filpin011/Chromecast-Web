@@ -269,7 +269,7 @@ class FakeProvider:
         self.contexts: list[FakeContext] = []
         self.closed = False
 
-    async def new_context(self, width: int, height: int, mobile: bool) -> FakeContext:
+    async def new_context(self, width: int, height: int, mobile: bool, scale: float = 1.0) -> FakeContext:
         ctx = FakeContext(self.site, self.titles, self.cdp_fail, self.evaluate)
         self.contexts.append(ctx)
         return ctx

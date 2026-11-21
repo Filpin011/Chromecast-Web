@@ -167,6 +167,8 @@ async def browser_ws(websocket: WebSocket, session_id: str, s: Services = Depend
         while True:
             msg = await queue.get()
             await websocket.send_json(msg)
+            if msg.get("type") == "frame":
+                session.frame_delivered(queue, msg.get("seq"))
             if msg.get("type") == "closed":
                 await websocket.close()
                 return

@@ -51,7 +51,7 @@ class AppConfig(BaseSettings):
     discovery_seconds: float = 5.0
     tick_interval: float = 1.0
     browser_max_sessions: int = 2
-    browser_idle_timeout: float = 600.0
+    browser_idle_timeout: float = 180.0
     webpage_timeout: float = 20.0
     restream_idle_timeout: float = 60.0
     fake_delay: float = 0.4

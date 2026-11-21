@@ -22,6 +22,8 @@ export interface ScreenInfo {
   height: number;
   insetTop: number;
   insetBottom: number;
+  /** window.devicePixelRatio (1 when unknown). */
+  dpr?: number;
 }
 
 export function viewportMode(v: Viewport | null | undefined): ViewportMode {
@@ -35,11 +37,27 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, M
  * has (no letterboxing / down-scaling). Desktop mode and tablet/desktop layouts keep the contract defaults.
  */
 export function fitViewport(mode: ViewportMode, screen: ScreenInfo | null): Viewport {
-  if (mode === "desktop" || !screen || screen.width <= 0 || screen.width > PHONE_LAYOUT_MAX) return { ...VIEWPORTS[mode] };
-  return {
-    width: clamp(screen.width, 200, MOBILE_MAX_WIDTH),
-    height: clamp(screen.height - BROWSER_CHROME_PX - screen.insetTop - screen.insetBottom, 200, 2560),
-  };
+  const base =
+    mode === "desktop" || !screen || screen.width <= 0 || screen.width > PHONE_LAYOUT_MAX
+      ? { ...VIEWPORTS[mode] }
+      : {
+          width: clamp(screen.width, 200, MOBILE_MAX_WIDTH),
+          height: clamp(screen.height - BROWSER_CHROME_PX - screen.insetTop - screen.insetBottom, 200, 2560),
+        };
+  const scale = renderScale(base, screen);
+  return scale > 1 ? { ...base, scale } : base;
+}
+
+/**
+ * Density the remote page should be rendered at so it is drawn without up-scaling: the device pixels
+ * the page occupies on this screen per page CSS pixel (a 390 px page on a 3× phone → 2; a 1280 px
+ * desktop page on an 820 px 2× tablet → 1.25). Capped at 2 (sharp enough, frames stay light), in 0.25 steps.
+ */
+export function renderScale(viewport: Viewport, screen: ScreenInfo | null): number {
+  if (!screen || screen.width <= 0 || viewport.width <= 0) return 1;
+  const shown = Math.min(screen.width, viewport.width) * (screen.dpr || 1);
+  const scale = Math.round((shown / viewport.width) * 4) / 4;
+  return Math.min(2, Math.max(1, scale));
 }
 
 /**
@@ -80,6 +98,7 @@ export function measureScreen(): ScreenInfo | null {
     height: Math.round(window.innerHeight),
     insetTop,
     insetBottom,
+    dpr: window.devicePixelRatio || 1,
   };
 }
 
