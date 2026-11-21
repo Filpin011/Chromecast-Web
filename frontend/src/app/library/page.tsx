@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { RenameFavoriteDialog } from "@/components/favorites/rename-dialog";
-import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
+import { ListRowSkeleton } from "@/components/common/list-row";
+import { MediaRow } from "@/components/library/media-row";
 import { SiteRow } from "@/components/library/site-row";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +26,6 @@ import { useT } from "@/i18n";
 import type { Favorite } from "@/lib/api/types";
 import { browserHref, mediaFavorites, siteFavorites } from "@/lib/favorites";
 import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 type Tab = "favorites" | "sites" | "history";
 const TABS: readonly Tab[] = ["favorites", "sites", "history"];
@@ -78,34 +79,22 @@ function LibraryInner() {
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
         )}
-        <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1" role="tablist">
-          {(
-            [
-              ["favorites", Star, t("library.favorites"), media.length],
-              ["sites", Globe, t("library.sites"), sites.length],
-              ["history", Clock, t("library.history"), history.data?.length],
-            ] as const
-          ).map(([id, Icon, label, count]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 text-sm font-medium transition-all",
-                tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              <Icon className="size-4 shrink-0" /> <span className="truncate">{label}</span>
-              {count ? <span className="text-xs text-muted-foreground tabular-nums">{count}</span> : null}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl<Tab>
+          kind="tab"
+          size="lg"
+          compactIcons
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "favorites", label: t("library.favorites"), icon: Star, count: media.length },
+            { value: "sites", label: t("library.sites"), icon: Globe, count: sites.length },
+            { value: "history", label: t("library.history"), icon: Clock, count: history.data?.length },
+          ]}
+        />
 
         <div className="rounded-2xl border bg-card p-1">
           {list.isLoading ? (
-            Array.from({ length: 5 }, (_, i) => <MediaRowSkeleton key={i} />)
+            Array.from({ length: 5 }, (_, i) => <ListRowSkeleton key={i} />)
           ) : tab === "sites" ? (
             sites.length ? (
               sites.map((f) => (

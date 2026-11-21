@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle, Loader2, RotateCw, Volume2, VolumeX } from "lucide-react";
+import { AlertTriangle, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { MediaOverlay } from "@/components/common/media-overlay";
 import { backendUrl } from "@/lib/config";
 import { canPlayNativeHls, isDashSource, isHlsSource } from "@/lib/media";
 import { useT } from "@/i18n";
@@ -104,29 +105,16 @@ export function VideoPreview({
         onPlaying={() => setStatus("playing")}
         onError={() => setStatus("error")}
       />
-      {status === "loading" && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <Loader2 className="size-7 animate-spin text-white/80" />
-        </div>
-      )}
+      {status === "loading" && <MediaOverlay spinner size="sm" />}
       {failed && (
-        <div role="alert" className="absolute inset-0 grid place-items-center bg-black p-4 text-center text-xs text-white/80">
-          <div className="flex flex-col items-center gap-2">
-            <AlertTriangle className="size-5" />
-            {status === "unsupported"
-              ? tr("preview.unsupported")
-              : tr("preview.error")}
-            {status === "error" && (
-              <button
-                type="button"
-                onClick={() => setAttempt((n) => n + 1)}
-                className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-4 text-xs font-medium text-white active:bg-white/25"
-              >
-                <RotateCw className="size-3.5" /> {tr("common.retry")}
-              </button>
-            )}
-          </div>
-        </div>
+        <MediaOverlay
+          role="alert"
+          tone="solid"
+          size="sm"
+          icon={AlertTriangle}
+          message={status === "unsupported" ? tr("preview.unsupported") : tr("preview.error")}
+          action={status === "error" ? { label: tr("common.retry"), icon: RotateCw, onClick: () => setAttempt((n) => n + 1) } : undefined}
+        />
       )}
       {!controls && status === "playing" && (
         <button

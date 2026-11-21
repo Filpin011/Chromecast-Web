@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2, Pause, Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import type { PlayerStateName } from "@/lib/api/types";
 import { useT } from "@/i18n";
@@ -22,7 +23,8 @@ export function PlayPauseButton({
   const t = useT();
   const playing = state === "PLAYING";
   const buffering = state === "BUFFERING";
-  const Icon = buffering ? Loader2 : playing ? Pause : Play;
+  const Icon = playing ? Pause : Play;
+  const iconSize = size === "lg" ? "size-8" : "size-6";
   return (
     <Button
       size={size === "lg" ? "icon-lg" : "icon"}
@@ -35,10 +37,11 @@ export function PlayPauseButton({
       }}
       className={cn(size === "lg" && "size-18 rounded-full shadow-lg shadow-primary/30", className)}
     >
-      <Icon
-        className={cn(size === "lg" ? "size-8" : "size-6", buffering && "animate-spin", !playing && !buffering && "translate-x-px")}
-        fill={buffering ? "none" : "currentColor"}
-      />
+      {buffering ? (
+        <Spinner className={iconSize} />
+      ) : (
+        <Icon className={cn(iconSize, !playing && "translate-x-px")} fill="currentColor" />
+      )}
     </Button>
   );
 }

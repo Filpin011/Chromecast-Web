@@ -1,6 +1,7 @@
 "use client";
 
-import { Cast, Check, Loader2, Plus, RefreshCw, Speaker, Trash2, Unplug, Users, WifiOff } from "lucide-react";
+import { Cast, Check, Plus, RefreshCw, Speaker, Trash2, Unplug, Users, WifiOff } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -63,7 +64,7 @@ function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
         className="h-11"
       />
       <Button type="submit" disabled={!parsed || busy} className="h-11">
-        {busy ? <Loader2 className="size-4 animate-spin" /> : t("common.add")}
+        {busy ? <Spinner /> : t("common.add")}
       </Button>
     </form>
   );
@@ -176,7 +177,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
                   </span>
                 </span>
                 {isConnecting ? (
-                  <Loader2 className="size-5 animate-spin" aria-label={t("devices.connecting")} />
+                  <Spinner className="size-5" aria-label={t("devices.connecting")} />
                 ) : isActive ? (
                   <Check className="size-5" aria-label={t("settings.connected")} />
                 ) : null}

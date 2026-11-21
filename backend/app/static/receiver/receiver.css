@@ -11,8 +11,8 @@
   --primary: #8f7dff;          /* brand violet = --primary, icon gradient start */
   --primary-deep: #6a55f0;
   --primary-fg: #100d24;
-  --live: #f0444c;             /* --live */
-  --warn: #ffb547;
+  --live: #ff3d42;             /* --live (dark), oklch(0.66 0.23 25) */
+  --warn: #ffb900;             /* --warning (dark), oklch(0.828 0.189 84.4): stalled / reconnecting */
   --chip-bg: rgba(255, 255, 255, 0.08);
   --chip-border: rgba(255, 255, 255, 0.16);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", "Google Sans", Roboto, sans-serif;
@@ -111,10 +111,10 @@ body[data-state="loading"] .dot { animation: pulse 1.4s ease-in-out infinite; }
 body.slow .dot,
 body[data-state="error"] .dot {
   background: var(--warn);
-  box-shadow: 0 0 0 0.65vh rgba(255, 181, 71, 0.22), 0 0 2.3vh rgba(255, 181, 71, 0.9);
+  box-shadow: 0 0 0 0.65vh rgba(255, 185, 0, 0.22), 0 0 2.3vh rgba(255, 185, 0, 0.9);
 }
 body.slow .chip,
-body[data-state="error"] .chip { color: #ffe2b3; border-color: rgba(255, 181, 71, 0.35); }
+body[data-state="error"] .chip { color: #ffe2b3; border-color: rgba(255, 185, 0, 0.35); }
 
 .hint {
   position: absolute;
@@ -176,7 +176,7 @@ body[data-state="error"] .ring {
 body.slow .ring,
 body[data-state="error"] .ring {
   border-top-color: var(--warn);
-  border-right-color: rgba(255, 181, 71, 0.4);
+  border-right-color: rgba(255, 185, 0, 0.4);
 }
 body[data-state="error"] .ring { animation-duration: 1.8s; }
 

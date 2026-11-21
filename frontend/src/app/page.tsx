@@ -9,9 +9,11 @@ import { useState } from "react";
 import { MediaResultCard, PlaylistResultCard, ResolveErrorCard, ResultSkeleton } from "@/components/cast/result-card";
 import { SmartInput } from "@/components/cast/smart-input";
 import { PageBody, PageHeader } from "@/components/common/page-header";
+import { Section } from "@/components/common/section";
 import { Thumb } from "@/components/common/thumb";
 import { SiteTiles } from "@/components/favorites/site-tiles";
-import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
+import { ListRowSkeleton } from "@/components/common/list-row";
+import { MediaRow } from "@/components/library/media-row";
 import { Button } from "@/components/ui/button";
 import { useAddFavorite, useFavorites, useHistory } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
@@ -21,26 +23,6 @@ import { browserHref, mediaFavorites, siteFavorites } from "@/lib/favorites";
 import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
 import { useT } from "@/i18n";
 import { autoResolvesWhileTyping, detectInput } from "@/lib/input-detect";
-
-function Section({ title, icon: Icon, href, children }: { title: string; icon: typeof Clock; href?: string; children: React.ReactNode }) {
-  const t = useT();
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-          <Icon className="size-4" /> {title}
-        </h2>
-        {href && (
-          // 44px touch target; the negative margin keeps the header row at text height
-          <Link href={href} className="-my-3 -mr-2 inline-flex min-h-11 items-center px-2 text-sm font-medium text-primary">
-            {t("common.seeAll")}
-          </Link>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 export default function CastPage() {
   const [input, setInput] = useState("");
@@ -123,7 +105,7 @@ export default function CastPage() {
           <Section title={t("cast.recent")} icon={Clock} href="/library/?tab=history">
             <div className="rounded-2xl border bg-card p-1">
               {history.isLoading
-                ? Array.from({ length: 3 }, (_, i) => <MediaRowSkeleton key={i} />)
+                ? Array.from({ length: 3 }, (_, i) => <ListRowSkeleton key={i} />)
                 : history.data?.map((h) => (
                     <MediaRow
                       key={h.id}
@@ -150,7 +132,7 @@ export default function CastPage() {
 
         {media.length > 0 && (
           <Section title={t("cast.favorites")} icon={Star} href="/library/?tab=favorites">
-            <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+            <div className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:scroll-px-0 md:px-0">
               {media.slice(0, 12).map((f) => (
                 <button
                   key={f.id}

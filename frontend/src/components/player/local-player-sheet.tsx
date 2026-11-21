@@ -1,7 +1,9 @@
 "use client";
 
-import { AlertTriangle, Cast, Check, ChevronDown, Loader2, Maximize, PictureInPicture2, Radio, RotateCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Cast, Check, Maximize, PictureInPicture2, RotateCw, Settings2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MediaOverlay } from "@/components/common/media-overlay";
 import { DevicePickerSheet } from "@/components/devices/device-picker-sheet";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
@@ -25,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useLocalPlayerStore, type LocalMedia, type LocalSource } from "@/stores/local-player-store";
 import { FullscreenControls } from "./local-fullscreen-controls";
 import { LiveBadge } from "./live-badge";
+import { LiveEdgeRow, PlayerSheetHeader } from "./player-chrome";
 import { SkipButton } from "./now-playing";
 import { PlayPauseButton } from "./play-pause-button";
 import { SeekBar } from "./seek-bar";
@@ -204,18 +207,9 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 px-2 pt-2">
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
-            <ChevronDown className="size-6" />
-          </Button>
-        )}
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase">{t("player.playingOn")}</p>
-          <p className="truncate text-sm font-semibold">{t("localPlayer.thisDevice")}</p>
-        </div>
+      <PlayerSheetHeader target={t("localPlayer.thisDevice")} onClose={onClose}>
         {menus(null)}
-      </div>
+      </PlayerSheetHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
         <div className="mx-auto flex max-w-xl flex-col gap-6">
@@ -262,25 +256,17 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
                 onCast={sendToTv}
               />
             )}
-            {!failed && (state.status === "loading" || (state.buffering && !state.paused)) && (
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <Loader2 className="size-8 animate-spin text-white/80" />
-              </div>
-            )}
+            {/* full screen, the centre play button already spins */}
+            {!failed && !fullscreen && (state.status === "loading" || (state.buffering && !state.paused)) && <MediaOverlay spinner size="sm" />}
             {failed && (
-              <div role="alert" className="absolute inset-0 grid place-items-center bg-black p-4 text-center text-xs text-white/80">
-                <div className="flex flex-col items-center gap-2">
-                  <AlertTriangle className="size-5" />
-                  {sourceError ? errorMessage(sourceError, t("localPlayer.error")) : t("localPlayer.error")}
-                  <button
-                    type="button"
-                    onClick={() => setAttempt((n) => n + 1)}
-                    className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-4 text-xs font-medium text-white active:bg-white/25"
-                  >
-                    <RotateCw className="size-3.5" /> {t("common.retry")}
-                  </button>
-                </div>
-              </div>
+              <MediaOverlay
+                role="alert"
+                tone="solid"
+                size="sm"
+                icon={AlertTriangle}
+                message={sourceError ? errorMessage(sourceError, t("localPlayer.error")) : t("localPlayer.error")}
+                action={{ label: t("common.retry"), icon: RotateCw, onClick: () => setAttempt((n) => n + 1) }}
+              />
             )}
           </div>
 
@@ -297,15 +283,7 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
           {vod ? (
             <SeekBar position={state.time} duration={state.duration} disabled={!ready} onSeek={v.seek} />
           ) : live ? (
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                {behind > 5 ? `-${formatTime(behind)}` : formatTime(state.time)}
-              </span>
-              <Button variant="secondary" size="sm" onClick={v.goLive} disabled={!ready} className="gap-1.5">
-                <Radio className="size-4 text-live" />
-                {t("player.goLive")}
-              </Button>
-            </div>
+            <LiveEdgeRow time={behind > 5 ? `-${formatTime(behind)}` : formatTime(state.time)} onGoLive={v.goLive} disabled={!ready} />
           ) : null}
 
           <div className="flex items-center justify-center gap-1">
@@ -333,7 +311,7 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
           <div className={cn("grid gap-2", media.onCast ? "grid-cols-[1fr_auto_auto]" : "grid-cols-2")}>
             {media.onCast && (
               <Button size="lg" className="min-w-0 gap-2" onClick={sendToTv} disabled={sending} aria-busy={sending || undefined}>
-                {send.state.phase === "sending" ? <Loader2 className="size-5 animate-spin" /> : <Cast className="size-5" />}
+                {send.state.phase === "sending" ? <Spinner className="size-5" /> : <Cast className="size-5" />}
                 <span className="truncate">{t("localPlayer.sendToTv")}</span>
               </Button>
             )}
@@ -377,7 +355,7 @@ function SendStatus({ state, device, error }: { state: SendState; device: string
     <div role="status" aria-live="polite" className="-mt-2 empty:hidden">
       {state.phase === "sending" ? (
         <p className="flex items-center justify-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-medium text-primary">
-          <Loader2 className="size-4 shrink-0 animate-spin" />
+          <Spinner className="shrink-0" />
           <span className="truncate">{t("localPlayer.sendingTo", { device })}</span>
         </p>
       ) : error ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { MediaBox, MediaOverlay } from "@/components/common/media-overlay";
 import { VideoPreview } from "@/components/media/video-preview";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
@@ -45,9 +45,9 @@ export function PreviewDialog({
         {src ? (
           <VideoPreview src={src} mimeType={media?.mime_type ?? stream?.mime_type} controls />
         ) : (
-          <div className="grid aspect-video place-items-center rounded-xl bg-black">
-            <Loader2 className="size-7 animate-spin text-white/70" />
-          </div>
+          <MediaBox>
+            <MediaOverlay spinner size="sm" />
+          </MediaBox>
         )}
       </DialogContent>
     </Dialog>

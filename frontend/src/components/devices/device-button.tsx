@@ -29,7 +29,7 @@ export function DeviceButton({ className, showName = false }: { className?: stri
           aria-hidden
           className={cn(
             "absolute top-2 right-2 size-2 rounded-full ring-2 ring-background",
-            connection !== "open" ? "bg-amber-500" : "bg-success",
+            connection !== "open" ? "bg-warning" : "bg-success",
           )}
         />
       )}

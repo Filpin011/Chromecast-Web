@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertCircle, Compass, Download, ListVideo, Play, RotateCw, ShieldCheck, Subtitles } from "lucide-react";
+import { AlertCircle, Cast, Compass, Download, ListVideo, Play, RotateCw, ShieldCheck, Subtitles } from "lucide-react";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { IconTile } from "@/components/common/icon-tile";
 import { Thumb } from "@/components/common/thumb";
 import { VideoPreview } from "@/components/media/video-preview";
 import { LiveBadge } from "@/components/player/live-badge";
@@ -149,9 +150,7 @@ export function PlaylistResultCard({
   return (
     <motion.article {...cardMotion} className="overflow-hidden rounded-2xl border bg-card shadow-sm">
       <div className="flex items-center gap-3 border-b p-4">
-        <div className="grid size-12 place-items-center rounded-xl bg-primary/15 text-primary">
-          <ListVideo className="size-6" />
-        </div>
+        <IconTile icon={ListVideo} />
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-semibold">{name || t("result.m3uPlaylist")}</h2>
           <p className="text-sm text-muted-foreground">{t.plural("playlists.channels", channels.length)}</p>
@@ -255,8 +254,9 @@ export function ResolveErrorCard({
           variant={siteFailed && !onRetry ? "default" : "secondary"}
           disabled={busy}
           onClick={() => cast({ input })}
-          className={btn}
+          className={cn(btn, "gap-2")}
         >
+          <Cast className="size-5" />
           {t("result.castAnyway")}
         </Button>
       </div>

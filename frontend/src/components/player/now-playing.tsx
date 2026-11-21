@@ -1,11 +1,9 @@
 "use client";
 
 import {
-  ChevronDown,
   ImageIcon,
   ListOrdered,
   MonitorPlay,
-  Radio,
   Redo2,
   RotateCcw,
   RotateCw,
@@ -16,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { isActivePlayback } from "@/hooks/use-app-state";
 import { useCommand } from "@/hooks/use-command";
@@ -33,6 +32,7 @@ import { useAppStore } from "@/stores/app-store";
 import { openLocalPlayer } from "@/stores/local-player-store";
 import { Artwork } from "./artwork";
 import { LiveBadge } from "./live-badge";
+import { LiveEdgeRow, PlayerSheetHeader } from "./player-chrome";
 import { loadingLabel, loadingTone, useLoadingStatus } from "./loading-status";
 import { PlayPauseButton } from "./play-pause-button";
 import { QueueList } from "./queue-list";
@@ -123,36 +123,25 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 px-2 pt-2">
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
-            <ChevronDown className="size-6" />
-          </Button>
-        )}
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase">{t("player.playingOn")}</p>
-          <p className="truncate text-sm font-semibold">{device.name}</p>
-        </div>
+      <PlayerSheetHeader target={device.name} onClose={onClose}>
         <TrackPicker tracks={player.tracks} activeIds={player.active_track_ids} onChange={setTracks} />
         {!player.tracks.length && <span className="size-11" />}
-      </div>
+      </PlayerSheetHeader>
 
-      <div className="mx-auto mt-2 grid w-full max-w-xs grid-cols-2 gap-1 rounded-xl bg-muted p-1 text-sm">
-        {(["player", "queue"] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-pressed={tab === id}
-            className={cn(
-              "flex h-9 items-center justify-center gap-1.5 rounded-lg font-medium transition-all",
-              tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {id === "player" ? t("player.tabPlayer") : <><ListOrdered className="size-4" /> {t("common.queue")} {player.queue.length > 0 && `(${player.queue.length})`}</>}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        kind="tab"
+        className="mx-auto mt-2 w-full max-w-xs"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "player", label: t("player.tabPlayer") },
+          {
+            value: "queue",
+            label: `${t("common.queue")}${player.queue.length > 0 ? ` (${player.queue.length})` : ""}`,
+            icon: ListOrdered,
+          },
+        ]}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
         {tab === "queue" ? (
@@ -192,13 +181,7 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
             {active && !live && player.duration ? (
               <SeekBar position={position} duration={player.duration} disabled={!canSeek} onSeek={(s) => run("seek", s)} />
             ) : active && live ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs text-muted-foreground tabular-nums">{formatTime(position)}</span>
-                <Button variant="secondary" size="sm" onClick={() => run("go_live")} className="gap-1.5">
-                  <Radio className="size-4 text-live" />
-                  {t("player.goLive")}
-                </Button>
-              </div>
+              <LiveEdgeRow time={formatTime(position)} onGoLive={() => run("go_live")} />
             ) : null}
 
             {/* Seven controls need 384px: the ±10 s pair only shows when the row (a container) is

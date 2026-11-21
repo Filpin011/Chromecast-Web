@@ -1,8 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, RefreshCw, X } from "lucide-react";
+import { RefreshCw, X } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
@@ -10,7 +12,6 @@ import type { PopupPolicy, Settings } from "@/lib/api/types";
 import { formatNumber, useT, type MessageKey } from "@/i18n";
 import { formatRelative } from "@/lib/format";
 import { errorMessage } from "@/lib/query";
-import { cn } from "@/lib/utils";
 
 const POLICIES: { value: PopupPolicy; label: MessageKey; hint: MessageKey }[] = [
   { value: "ask", label: "adblock.policy.ask", hint: "adblock.policy.askHint" },
@@ -96,24 +97,14 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
         <p className="text-sm font-medium" id="popup-policy-label">
           {t("adblock.popups")}
         </p>
-        <div role="radiogroup" aria-labelledby="popup-policy-label" className="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
-          {POLICIES.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              role="radio"
-              aria-checked={policy === p.value}
-              disabled={!s}
-              onClick={() => onChange({ popup_policy: p.value })}
-              className={cn(
-                "h-9 rounded-lg text-sm font-medium transition-colors",
-                policy === p.value ? "bg-background shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              {t(p.label)}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-labelledby="popup-policy-label"
+          className="mt-2"
+          disabled={!s}
+          value={policy}
+          onChange={(v) => onChange({ popup_policy: v })}
+          options={POLICIES.map((p) => ({ value: p.value, label: t(p.label) }))}
+        />
         <p className="mt-1.5 text-xs text-muted-foreground">
           {t(POLICIES.find((p) => p.value === policy)?.hint ?? "adblock.policy.askHint")} {t("adblock.adPopupsClosed")}
         </p>
@@ -141,7 +132,7 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
             </p>
           </div>
           <Button variant="secondary" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-            {refresh.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {refresh.isPending ? <Spinner /> : <RefreshCw className="size-4" />}
             {t("playlists.refresh")}
           </Button>
         </div>

@@ -25,8 +25,8 @@
   var IT = /^it\b/i.test(navigator.language || '');
   var T = IT ? {
     loading: 'Caricamento…',
-    slow: 'Connessione lenta, caricamento in corso…',
-    error: 'Flusso interrotto, riconnessione…',
+    slow: 'Connessione lenta, sto ancora caricando…',
+    error: 'Stream interrotto, riconnessione…',
     live: 'LIVE',
     ready: 'Pronto per trasmettere',
     hint: 'Apri Chromecast Web da un browser qualsiasi per iniziare a trasmettere',

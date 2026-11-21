@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRight, ClipboardPaste, Link2, ListVideo, Loader2, MonitorPlay, Radio, X, type LucideIcon } from "lucide-react";
+import { ArrowRight, ClipboardPaste, Link2, ListVideo, MonitorPlay, Radio, X, type LucideIcon } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useRef, useSyncExternalStore, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,7 @@ export function SmartInput({ value, onChange, onSubmit, loading, autoFocus, hint
         ) : null}
         {value && (
           <Button type="submit" size="icon" aria-label={t("input.analyse")} disabled={!canSubmit || loading} className="rounded-xl">
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+            {loading ? <Spinner /> : <ArrowRight className="size-4" />}
           </Button>
         )}
       </div>

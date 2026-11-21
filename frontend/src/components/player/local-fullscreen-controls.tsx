@@ -1,12 +1,13 @@
 "use client";
 
-import { Cast, ChevronDown, Minimize, PictureInPicture2, Radio } from "lucide-react";
+import { Cast, ChevronDown, Minimize, PictureInPicture2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { LiveBadge } from "./live-badge";
+import { LiveEdgeRow } from "./player-chrome";
 import { SkipButton } from "./now-playing";
 import { PlayPauseButton } from "./play-pause-button";
 import { SeekBar } from "./seek-bar";
@@ -166,15 +167,7 @@ export function FullscreenControls(p: FullscreenControlsProps) {
             {p.vod ? (
               <SeekBar position={p.time} duration={p.duration} disabled={!p.ready} onSeek={p.onSeek} />
             ) : p.live ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs text-white/70 tabular-nums">
-                  {p.behind > 5 ? `-${formatTime(p.behind)}` : formatTime(p.time)}
-                </span>
-                <Button variant="secondary" size="sm" onClick={p.onGoLive} disabled={!p.ready} className="gap-1.5">
-                  <Radio className="size-4 text-live" />
-                  {t("player.goLive")}
-                </Button>
-              </div>
+              <LiveEdgeRow overVideo time={p.behind > 5 ? `-${formatTime(p.behind)}` : formatTime(p.time)} onGoLive={p.onGoLive} disabled={!p.ready} />
             ) : null}
           </div>
           <div className={cn("flex items-center gap-1", interactive)}>

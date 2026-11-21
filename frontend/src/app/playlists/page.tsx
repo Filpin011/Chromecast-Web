@@ -1,20 +1,15 @@
 "use client";
 
-import { ListVideo, MoreVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ListVideo, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
+import { IconTile } from "@/components/common/icon-tile";
+import { RowMenu } from "@/components/common/list-row";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { ImportPlaylistDialog } from "@/components/playlists/import-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useDeletePlaylist, usePlaylists, useRefreshPlaylist } from "@/hooks/queries";
 import { useT } from "@/i18n";
 import { formatRelative, hostOf } from "@/lib/format";
@@ -67,9 +62,7 @@ export default function PlaylistsPage() {
                 className="flex min-w-0 items-center gap-1 rounded-2xl border bg-card pr-1 shadow-sm transition hover:border-primary/40"
               >
                 <Link href={`/playlists/view/?id=${encodeURIComponent(p.id)}`} className="flex min-h-22 min-w-0 flex-1 items-center gap-3 p-4">
-                  <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary/12 text-primary">
-                    <ListVideo className="size-6" />
-                  </div>
+                  <IconTile icon={ListVideo} />
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{p.name}</p>
                     <p className="text-sm text-muted-foreground">
@@ -87,27 +80,21 @@ export default function PlaylistsPage() {
                     </p>
                   </div>
                 </Link>
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("playlists.actionsFor", { name: p.name })} />}>
-                    <MoreVertical className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {p.source_url && (
-                      <DropdownMenuItem onClick={() => refresh.mutate(p.id)}>
-                        <RefreshCw className="size-4" /> {t("playlists.refresh")}
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => {
+                <RowMenu
+                  label={t("playlists.actionsFor", { name: p.name })}
+                  actions={[
+                    ...(p.source_url ? [{ label: t("playlists.refresh"), icon: RefreshCw, onClick: () => refresh.mutate(p.id) }] : []),
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      separated: !!p.source_url,
+                      onClick: () => {
                         if (window.confirm(t("playlists.deleteConfirm", { name: p.name }))) del.mutate(p.id);
-                      }}
-                    >
-                      <Trash2 className="size-4" /> {t("common.delete")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      },
+                    },
+                  ]}
+                />
               </li>
             ))}
           </ul>

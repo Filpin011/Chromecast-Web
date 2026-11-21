@@ -5,6 +5,7 @@ import { ChevronLeft, LayoutGrid, List, Search, SearchX, X } from "lucide-react"
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useMemo, useState } from "react";
+import { ChipGroup } from "@/components/common/chip-group";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageBody } from "@/components/common/page-header";
 import { DeviceButton } from "@/components/devices/device-button";
@@ -21,7 +22,6 @@ import { channelMedia, seekAfterCast } from "@/lib/local-player/sources";
 import { qk } from "@/lib/query";
 import { readStorage, writeStorage } from "@/lib/storage";
 import { useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 import { openLocalPlayer } from "@/stores/local-player-store";
 
 const PAGE = 200;
@@ -116,7 +116,7 @@ function PlaylistView() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t("playlists.searchChannel")}
-              className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40"
+              className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40 [&::-webkit-search-cancel-button]:appearance-none"
             />
             {q && (
               <button type="button" aria-label={t("common.clearSearch")} onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
@@ -125,23 +125,13 @@ function PlaylistView() {
             )}
           </div>
           {groups.length > 0 && (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:-mx-8 md:px-8" role="radiogroup" aria-label={t("playlists.groupsLabel")}>
-              {[null, ...groups].map((g) => (
-                <button
-                  key={g ?? "__all"}
-                  type="button"
-                  role="radio"
-                  aria-checked={group === g}
-                  onClick={() => setGroup(g)}
-                  className={cn(
-                    "h-8 shrink-0 rounded-full border px-3.5 text-xs font-medium whitespace-nowrap transition-colors",
-                    group === g ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground",
-                  )}
-                >
-                  {g ?? t("playlists.allGroups")}
-                </button>
-              ))}
-            </div>
+            <ChipGroup<string | null>
+              aria-label={t("playlists.groupsLabel")}
+              className="-mx-4 px-4 md:-mx-8 md:px-8"
+              value={group}
+              onChange={setGroup}
+              options={[{ value: null, label: t("playlists.allGroups") }, ...groups.map((g) => ({ value: g, label: g }))]}
+            />
           )}
         </div>
       </header>

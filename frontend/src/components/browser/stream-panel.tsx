@@ -1,7 +1,8 @@
 "use client";
 
-import { Bookmark, Cast, ListPlus, ListX, MonitorPlay, Play, X } from "lucide-react";
+import { Cast, ListPlus, ListX, MonitorPlay, Play, Star, X } from "lucide-react";
 import { motion } from "motion/react";
+import { ChipGroup } from "@/components/common/chip-group";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
 import type { CapturedStream } from "@/lib/api/types";
@@ -56,7 +57,7 @@ function ActionButton({
     >
       <Icon className="size-5" />
       {/* two lines rather than an ellipsis: five actions share a phone's width ("Guarda qui") */}
-      <span className="line-clamp-2 max-w-full px-0.5 text-center leading-tight">{label}</span>
+      <span className="line-clamp-2 max-w-full px-0.5 text-center leading-tight break-words">{label}</span>
     </button>
   );
 }
@@ -113,32 +114,25 @@ export function StreamPanel({
       </div>
 
       {streams.length > 1 && (
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 no-scrollbar" role="tablist" aria-label={t("browser.detectedStreams")}>
-          {streams.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={s.id === stream.id}
-              onClick={() => onSelect(s.id)}
-              className={cn(
-                "h-9 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
-                s.id === stream.id ? "border-primary bg-primary/15 text-primary" : "text-muted-foreground",
-              )}
-            >
-              {qualityLabel(s) ?? t("panel.streamN", { n: i + 1 })}
-              {s.is_live ? ` · ${t("player.live")}` : ""}
-            </button>
-          ))}
-        </div>
+        <ChipGroup
+          kind="tab"
+          aria-label={t("browser.detectedStreams")}
+          className="-mx-4 mt-3 px-4"
+          value={stream.id}
+          onChange={onSelect}
+          options={streams.map((s, i) => ({
+            value: s.id,
+            label: `${qualityLabel(s) ?? t("panel.streamN", { n: i + 1 })}${s.is_live ? ` · ${t("player.live")}` : ""}`,
+          }))}
+        />
       )}
 
-      <div className={cn("mt-3 grid gap-2", onWatch ? "grid-cols-5" : "grid-cols-4")}>
+      <div className={cn("mt-3 grid", onWatch ? "grid-cols-5 gap-1.5" : "grid-cols-4 gap-2")}>
         <ActionButton icon={Cast} label={t("common.cast")} primary onClick={() => onCast(stream)} disabled={busy} />
         <ActionButton icon={ListPlus} label={t("common.queue")} onClick={() => onQueue(stream)} disabled={busy} />
         <ActionButton icon={Play} label={t("common.preview")} onClick={() => onPlay(stream)} />
         {onWatch && <ActionButton icon={MonitorPlay} label={t("localPlayer.watchHere")} onClick={() => onWatch(stream)} />}
-        <ActionButton icon={Bookmark} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
+        <ActionButton icon={Star} label={t("common.favorite")} onClick={() => onBookmark(stream)} />
       </div>
     </motion.section>
   );

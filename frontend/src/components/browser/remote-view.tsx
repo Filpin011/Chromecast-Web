@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2, MonitorX, RotateCw, WifiOff } from "lucide-react";
+import { MonitorX, RotateCw, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { MediaOverlay } from "@/components/common/media-overlay";
 import type { BrowserClientMsg } from "@/lib/api/types";
 import type { BrowserLinkStatus } from "@/lib/browser-session";
 import { clientToPage, deltaToPage, toPlaywrightKey, type Size } from "@/lib/coords";
@@ -183,47 +183,25 @@ export function RemoteView({ page, hasFrame, closed, send, onSink, status = "ope
         onKeyDown={onKeyDown}
         className="size-full touch-none object-contain outline-none select-none"
       />
-      {!hasFrame && !closed && !reconnecting && !failed && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-white/70">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="size-7 animate-spin" />
-            {t("remote.loading")}
-          </div>
-        </div>
-      )}
-      {reconnecting && (
-        <div role="status" className="absolute inset-0 grid place-items-center bg-black/60 text-sm text-white/85">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="size-7 animate-spin" />
-            {t("remote.reconnecting")}
-          </div>
-        </div>
-      )}
+      {!hasFrame && !closed && !reconnecting && !failed && <MediaOverlay spinner message={t("remote.loading")} />}
+      {reconnecting && <MediaOverlay role="status" tone="dim" spinner message={t("remote.reconnecting")} />}
       {failed && (
-        <div role="alert" className="absolute inset-0 grid place-items-center bg-black/70 px-6 text-center text-sm text-white/85">
-          <div className="flex flex-col items-center gap-3">
-            <WifiOff className="size-7" />
-            {t("remote.lost")}
-            {onRetry && (
-              <Button variant="secondary" size="lg" onClick={onRetry} className="gap-2">
-                <RotateCw className="size-4" /> {t("common.retry")}
-              </Button>
-            )}
-          </div>
-        </div>
+        <MediaOverlay
+          role="alert"
+          tone="dim"
+          icon={WifiOff}
+          message={t("remote.lost")}
+          action={onRetry ? { label: t("common.retry"), icon: RotateCw, onClick: onRetry } : undefined}
+        />
       )}
       {closed && (
-        <div role="alert" className="absolute inset-0 grid place-items-center bg-black/70 text-sm text-white/80">
-          <div className="flex flex-col items-center gap-3">
-            <MonitorX className="size-7" />
-            {t("remote.closed")}
-            {onReopen && (
-              <Button variant="secondary" size="lg" onClick={onReopen} className="gap-2">
-                <RotateCw className="size-4" /> {t("remote.reopen")}
-              </Button>
-            )}
-          </div>
-        </div>
+        <MediaOverlay
+          role="alert"
+          tone="dim"
+          icon={MonitorX}
+          message={t("remote.closed")}
+          action={onReopen ? { label: t("remote.reopen"), icon: RotateCw, onClick: onReopen } : undefined}
+        />
       )}
     </div>
   );

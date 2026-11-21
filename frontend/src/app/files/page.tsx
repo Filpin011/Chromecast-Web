@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageBody, PageHeader } from "@/components/common/page-header";
-import { MediaRowSkeleton } from "@/components/library/media-row";
+import { ListRowSkeleton } from "@/components/common/list-row";
 import { useLocalListing } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
 import { ApiError } from "@/lib/api";
@@ -62,7 +62,7 @@ function FilesInner() {
             </nav>
             <div className="rounded-2xl border bg-card p-1">
               {listing.isLoading ? (
-                Array.from({ length: 6 }, (_, i) => <MediaRowSkeleton key={i} />)
+                Array.from({ length: 6 }, (_, i) => <ListRowSkeleton key={i} />)
               ) : listing.isError ? (
                 <EmptyState icon={FolderX} title={t("files.unreadable")} />
               ) : !listing.data?.entries.length ? (
