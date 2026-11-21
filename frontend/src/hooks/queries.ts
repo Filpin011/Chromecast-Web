@@ -171,6 +171,16 @@ export function useSettings() {
   return useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get() });
 }
 
+/**
+ * Why a settings save failed: a 422 on a patch with a URL field means the backend rejected the address
+ * (the generic "Invalid request" would not say which or why).
+ */
+export function settingsErrorMessage(e: unknown, patch: Partial<Settings>): string {
+  const hasUrl = "idle_image_url" in patch || "public_base_url" in patch;
+  if (hasUrl && e instanceof ApiError && e.code === "validation_error") return t("settings.invalidUrl");
+  return errorMessage(e, t("settings.saveFailed"));
+}
+
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
@@ -181,9 +191,9 @@ export function useUpdateSettings() {
       if (prev) qc.setQueryData(qk.settings, { ...prev, ...patch });
       return { prev };
     },
-    onError: (e, _p, ctx) => {
+    onError: (e, patch, ctx) => {
       if (ctx?.prev) qc.setQueryData(qk.settings, ctx.prev);
-      toast.error(errorMessage(e, t("settings.saveFailed")));
+      toast.error(settingsErrorMessage(e, patch));
     },
     onSuccess: (s) => qc.setQueryData(qk.settings, s),
   });

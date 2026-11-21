@@ -3,7 +3,7 @@
 import { Cast, Check, Plus, RefreshCw, Speaker, Trash2, Unplug, Users, WifiOff } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { AnimatePresence, motion } from "motion/react";
-import { useState, type FormEvent } from "react";
+import { useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,12 @@ function AddDeviceForm({ onAdded }: { onAdded: (d: Device) => void }) {
 
 export interface DevicePickerContentProps {
   title: string;
+  /**
+   * Element that renders the visible title. A sheet passes its `DialogTitle` / `DrawerTitle`, so the
+   * heading the user sees is also the dialog's accessible name (one title, not a visible h2 plus a
+   * hidden one). Default: a plain `h2`.
+   */
+  titleAs?: ComponentType<{ className?: string; children?: ReactNode }> | "h2";
   /** Called after the user connected to a device (or picked the already active one). */
   onPicked: (deviceId: string) => void;
   onCancel: () => void;
@@ -83,7 +89,7 @@ export interface DevicePickerContentProps {
 }
 
 /** "Send video to…" — minimal & fast device list, reused app-wide. */
-export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick = true }: DevicePickerContentProps) {
+export function DevicePickerContent({ title, titleAs: Title = "h2", onPicked, onCancel, connectOnPick = true }: DevicePickerContentProps) {
   const t = useT();
   const devices = useDevices();
   const discovering = useDiscovering();
@@ -150,7 +156,7 @@ export function DevicePickerContent({ title, onPicked, onCancel, connectOnPick =
 
   return (
     <div className="flex flex-col pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-      <h2 className="px-5 pt-4 pb-2 text-lg font-semibold">{title}</h2>
+      <Title className="px-5 pt-4 pb-2 text-lg leading-7 font-semibold">{title}</Title>
       <ul className="max-h-[50dvh] overflow-y-auto" aria-label={t("devices.label")} aria-busy={scanning}>
         {sorted.map((d) => {
           const isActive = active?.id === d.id && connected;

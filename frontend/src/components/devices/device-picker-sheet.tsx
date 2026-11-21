@@ -29,14 +29,16 @@ export function DevicePickerSheet({ nested = false }: { nested?: boolean }) {
     useUiStore.getState().resolveDevice(id);
     setOpen(false);
   };
-  const content = <DevicePickerContent title={title} onPicked={onPicked} onCancel={() => setOpen(false)} connectOnPick={!forCast} />;
+  // the visible heading is the dialog's title itself: one accessible name (see `titleAs`)
+  const content = (Title: typeof DialogTitle | typeof DrawerTitle) => (
+    <DevicePickerContent title={title} titleAs={Title} onPicked={onPicked} onCancel={() => setOpen(false)} connectOnPick={!forCast} />
+  );
 
   if (isDesktop || nested) {
     return (
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md" showCloseButton={false}>
-          <DialogTitle className="sr-only">{title}</DialogTitle>
-          {content}
+          {content(DialogTitle)}
         </DialogContent>
       </Dialog>
     );
@@ -44,8 +46,7 @@ export function DevicePickerSheet({ nested = false }: { nested?: boolean }) {
   return (
     <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
       <DrawerContent>
-        <DrawerTitle className="sr-only">{title}</DrawerTitle>
-        {content}
+        {content(DrawerTitle)}
       </DrawerContent>
     </Drawer>
   );

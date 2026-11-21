@@ -2,7 +2,7 @@
 
 import { Check, ImageIcon, Info, Languages, MonitorSmartphone, Network, Palette, ShieldCheck, Tv, type LucideIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { PageBody, PageHeader } from "@/components/common/page-header";
@@ -16,8 +16,9 @@ import { useActiveDevice, useConnection, useDevices } from "@/hooks/use-app-stat
 import { api } from "@/lib/api";
 import type { Settings } from "@/lib/api/types";
 import { LanguagePicker } from "@/components/settings/language-picker";
-import { useT } from "@/i18n";
+import { useT, type MessageKey } from "@/i18n";
 import { errorMessage } from "@/lib/query";
+import { isHttpUrl } from "@/lib/url";
 import { useAppStore } from "@/stores/app-store";
 
 /** A settings group: the shared section header over a card of rows. */
@@ -63,13 +64,22 @@ function ToggleRow({ id, label, description, field, settings, onChange }: {
   );
 }
 
-/** Text field that saves on blur / Enter (null when empty). */
+/** Empty (= unset) or an absolute http(s) URL, like the backend; otherwise the inline error to show. */
+function urlError(v: string): MessageKey | null {
+  return !v || isHttpUrl(v) ? null : "settings.invalidUrlInline";
+}
+
+/**
+ * Text field that saves on blur / Enter (null when empty). With `validate`, an invalid value is not
+ * sent: the field keeps it and shows why under it, so the user can fix it.
+ */
 function TextSetting({
   id,
   value,
   placeholder,
   describedBy,
   onSave,
+  validate,
   inputMode = "url",
 }: {
   id: string;
@@ -77,40 +87,88 @@ function TextSetting({
   placeholder?: string;
   describedBy?: string;
   onSave: (v: string | null) => void;
+  validate?: (v: string) => MessageKey | null;
   inputMode?: "url" | "text";
 }) {
   const t = useT();
   const [draft, setDraft] = useState(value ?? "");
+  const [error, setError] = useState<MessageKey | null>(null);
   const dirty = draft.trim() !== (value ?? "");
   const save = () => {
-    if (dirty) onSave(draft.trim() || null);
+    if (!dirty) return;
+    const v = draft.trim();
+    const err = validate?.(v) ?? null;
+    setError(err);
+    if (!err) onSave(v || null);
   };
+  const errorId = `${id}-error`;
   return (
-    <div className="flex gap-2 px-4 pb-3">
-      <input
-        id={id}
-        value={draft}
-        placeholder={placeholder}
-        aria-describedby={describedBy}
-        inputMode={inputMode}
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            save();
-          }
-        }}
-        className="h-11 min-w-0 flex-1 rounded-xl bg-muted px-3 text-base outline-none focus:ring-2 focus:ring-primary/40"
-      />
-      <Button variant="secondary" size="icon" aria-label={t("common.save")} disabled={!dirty} onClick={save}>
-        <Check className="size-4" />
-      </Button>
+    <div className="px-4 pb-3">
+      <div className="flex gap-2">
+        <input
+          id={id}
+          value={draft}
+          placeholder={placeholder}
+          aria-describedby={[error ? errorId : null, describedBy].filter(Boolean).join(" ") || undefined}
+          aria-invalid={error ? true : undefined}
+          inputMode={inputMode}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (error) setError(null);
+          }}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save();
+            }
+          }}
+          className="h-11 min-w-0 flex-1 rounded-xl bg-muted px-3 text-base outline-none focus:ring-2 focus:ring-primary/40 aria-invalid:ring-2 aria-invalid:ring-destructive/50"
+        />
+        <Button variant="secondary" size="icon" aria-label={t("common.save")} disabled={!dirty} onClick={save}>
+          <Check className="size-4" />
+        </Button>
+      </div>
+      {error && (
+        <p id={errorId} role="alert" className="mt-1.5 text-xs text-destructive">
+          {t(error)}
+        </p>
+      )}
     </div>
   );
+}
+
+/** Header status of the last settings save: spinner while saving, then a brief "Saved". */
+function SaveStatus({ pending, saved }: { pending: boolean; saved: boolean }) {
+  const t = useT();
+  return (
+    <span role="status" className="flex items-center gap-1 text-sm text-muted-foreground">
+      {pending ? (
+        <Spinner className="size-5" aria-label={t("common.saving")} />
+      ) : saved ? (
+        <>
+          <Check className="size-4 text-success" aria-hidden />
+          {t("settings.saved")}
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/** `true` for `ms` after each `flash()`: a short-lived confirmation that re-arms on every call. */
+function useFlash(ms = 2000): [boolean, () => void] {
+  const [on, setOn] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const flash = useCallback(() => {
+    clearTimeout(timer.current);
+    setOn(true);
+    timer.current = setTimeout(() => setOn(false), ms);
+  }, [ms]);
+  return [on, flash];
 }
 
 export default function SettingsPage() {
@@ -122,7 +180,8 @@ export default function SettingsPage() {
   const health = useHealth();
   const connection = useConnection();
   const s = settings.data;
-  const save = (patch: Partial<Settings>) => update.mutate(patch);
+  const [saved, flashSaved] = useFlash();
+  const save = (patch: Partial<Settings>) => update.mutate(patch, { onSuccess: flashSaved });
 
   const showIdleNow = async () => {
     if (!active) {
@@ -141,7 +200,7 @@ export default function SettingsPage() {
     <>
       <PageHeader
         title={t("settings.title")}
-        actions={update.isPending ? <Spinner className="size-5 text-muted-foreground" aria-label={t("common.saving")} /> : null}
+        actions={<SaveStatus pending={update.isPending} saved={saved} />}
       />
       <PageBody className="space-y-6 pt-2">
         <Group title={t("settings.device")} icon={Tv}>
@@ -178,6 +237,7 @@ export default function SettingsPage() {
                 value={s.idle_image_url}
                 placeholder={t("settings.imageUrlPlaceholder")}
                 describedBy="idle-url-hint"
+                validate={urlError}
                 onSave={(v) => save({ idle_image_url: v })}
               />
             ) : (
@@ -210,6 +270,7 @@ export default function SettingsPage() {
                 id="public-url"
                 value={s.public_base_url}
                 placeholder="http://192.168.1.10:8000"
+                validate={urlError}
                 onSave={(v) => save({ public_base_url: v })}
               />
             ) : (

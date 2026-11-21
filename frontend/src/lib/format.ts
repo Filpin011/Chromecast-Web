@@ -32,6 +32,16 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
   return formatRelativeTime(iso, now);
 }
 
+/**
+ * A file name without its extension, as a display title: "Test Clip.mp4" → "Test Clip". Dotfiles and
+ * names without an extension are kept as they are.
+ */
+export function stripExtension(name: string): string {
+  const base = name.trim();
+  const dot = base.lastIndexOf(".");
+  return dot > 0 && dot < base.length - 1 ? base.slice(0, dot) : base;
+}
+
 export function hostOf(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, "");

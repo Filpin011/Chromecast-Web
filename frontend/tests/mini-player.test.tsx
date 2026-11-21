@@ -170,7 +170,8 @@ describe("NowPlayingContent", () => {
     renderWithProviders(<NowPlayingContent device={makeDevice()} player={player} receivedAt={Date.now()} />);
     fireEvent.click(screen.getByRole("tab", { name: /Queue/ }));
     expect(screen.getByText("Prossimo film")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Remove Prossimo film" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Prossimo film" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("dev-1", "q1"));
   });
 });

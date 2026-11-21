@@ -30,7 +30,8 @@ export function ChipGroup<T extends string | null>({
     <div
       role={kind === "tab" ? "tablist" : "radiogroup"}
       aria-label={ariaLabel}
-      className={cn("flex gap-2 overflow-x-auto no-scrollbar", className)}
+      // py-1: room for the chips' 44px tap area (`hit-area-44`) inside the scroller, which clips overflow
+      className={cn("flex gap-2 overflow-x-auto py-1 no-scrollbar", className)}
     >
       {options.map(({ value: v, label }) => {
         const active = v === value;
@@ -42,7 +43,7 @@ export function ChipGroup<T extends string | null>({
             {...(kind === "tab" ? { "aria-selected": active } : { "aria-checked": active })}
             onClick={() => onChange(v)}
             className={cn(
-              "h-9 shrink-0 rounded-full border px-3.5 text-xs font-medium whitespace-nowrap transition-colors",
+              "hit-area-44 h-9 shrink-0 rounded-full border px-3.5 text-xs font-medium whitespace-nowrap transition-colors",
               active ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground",
             )}
           >
