@@ -251,11 +251,11 @@ interface ApiError {
 | GET | `/api/state` | | `AppState` |
 | GET | `/api/devices` | | `Device[]` |
 | POST | `/api/devices/discover` | | `Device[]` (runs discovery ~5s, non-blocking for other requests) |
-| POST | `/api/devices/manual` | `{host, port?=8009, name?}` | `Device` |
+| POST | `/api/devices/manual` | `{host, port?=8009, name?}` | `Device` (422 for a blank/invalid host or a port outside 1..65535) |
 | DELETE | `/api/devices/{id}` | | 204 (manual devices only) |
 | POST | `/api/devices/{id}/connect` | | `PlayerState` (becomes `active_device_id`; shows idle image if enabled) |
 | POST | `/api/devices/{id}/disconnect` | | 204 |
-| POST | `/api/resolve` | `{input, kind?: SourceKind, headers?}` | `ResolveResult` |
+| POST | `/api/resolve` | `{input, kind?: SourceKind, headers?}` | `ResolveResult` (raw `#EXTM3U` text as `input` → `{type:"playlist"}` preview; `empty_playlist` / `unsupported_input`) |
 | POST | `/api/devices/{id}/play` | `{input, kind?, title?, enqueue?: false, headers?}` | `PlayerState` (resolves + casts; if `enqueue` adds to queue) |
 | POST | `/api/devices/{id}/control` | `{action, value?}` | `PlayerState` |
 | POST | `/api/devices/{id}/tracks` | `{active_track_ids: number[]}` | `PlayerState` |
@@ -264,10 +264,10 @@ interface ApiError {
 | DELETE | `/api/devices/{id}/queue/{item_id}` | | `PlayerState` |
 | PUT | `/api/devices/{id}/queue` | `{item_ids: string[]}` (reorder) | `PlayerState` |
 | GET | `/api/playlists` | | `Playlist[]` |
-| POST | `/api/playlists` | `{url?, content?, name?}` | `Playlist` (import & persist) |
+| POST | `/api/playlists` | `{url?, content?, name?}` | `Playlist` (import & persist; a non-http(s) `url` → 400 `unsupported_source`/`malformed_url`) |
 | GET | `/api/playlists/{id}` | | `Playlist` |
 | GET | `/api/playlists/{id}/channels` | query `q, group, offset=0, limit=100` | `{items: Channel[], total: number}` |
-| POST | `/api/playlists/{id}/refresh` | | `Playlist` |
+| POST | `/api/playlists/{id}/refresh` | | `Playlist` (same errors as import, e.g. `empty_playlist` / `hls_not_playlist`; on error the stored channels are kept) |
 | DELETE | `/api/playlists/{id}` | | 204 |
 | GET | `/api/favorites` | | `Favorite[]` |
 | POST | `/api/favorites` | `{kind?: FavoriteKind = "media", title, input, source_kind (media only), thumbnail?}` | `Favorite` (201). Upsert: the same `kind` + `input` updates the existing row (no duplicates); a site needs an http(s) URL (else 422) |
@@ -276,7 +276,7 @@ interface ApiError {
 | GET | `/api/history` | query `limit=50` | `HistoryEntry[]` |
 | DELETE | `/api/history` | | 204 (clear) |
 | GET | `/api/settings` | | `Settings` |
-| PUT | `/api/settings` | `Partial<Settings>` | `Settings` |
+| PUT | `/api/settings` | `Partial<Settings>` | `Settings` (`idle_image_url` / `public_base_url` must be absolute http(s) URLs, else 422; empty = unset) |
 | GET | `/api/local` | query `path=""` | `{path, entries: {name, path, is_dir, size, mime_type}[]}` (404 code `local_disabled` if no MEDIA_ROOT) |
 
 `control.action` ∈ `play | pause | toggle | stop | seek | seek_relative | go_live | volume | volume_relative | mute | unmute | next | previous`.
