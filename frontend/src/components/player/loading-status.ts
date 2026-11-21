@@ -23,7 +23,7 @@ export function loadingLabel(status: LoadingStatus, t: Translator): string {
   }
 }
 
-/** Status line color: a struggling stream stands out (amber), a plain load stays muted. */
+/** Status line color: a struggling stream stands out (warning), a plain load stays muted. */
 export function loadingTone(status: LoadingStatus | null): string {
-  return status && status.kind !== "loading" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+  return status && status.kind !== "loading" ? "text-warning" : "text-muted-foreground";
 }

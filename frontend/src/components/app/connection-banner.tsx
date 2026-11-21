@@ -28,7 +28,7 @@ export function ConnectionBanner() {
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          className="overflow-hidden bg-amber-500/15 text-amber-700 dark:text-amber-300"
+          className="overflow-hidden bg-warning/15 text-warning"
         >
           <div className="flex items-center justify-center gap-2 px-4 pt-[max(env(safe-area-inset-top),0.5rem)] pb-2 text-xs font-medium">
             <WifiOff className="size-3.5" />

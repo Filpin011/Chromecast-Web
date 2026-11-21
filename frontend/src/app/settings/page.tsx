@@ -250,7 +250,7 @@ export default function SettingsPage() {
           </Row>
           <Row label={t("settings.liveSync")}>
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <span className={connection === "open" ? "size-2 rounded-full bg-success" : "size-2 rounded-full bg-amber-500"} />
+              <span className={connection === "open" ? "size-2 rounded-full bg-success" : "size-2 rounded-full bg-warning"} />
               {connection === "open" ? t("settings.connected") : t("connection.reconnecting")}
             </span>
           </Row>
