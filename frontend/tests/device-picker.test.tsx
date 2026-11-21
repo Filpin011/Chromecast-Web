@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => {
@@ -140,5 +140,16 @@ describe("DevicePickerSheet", () => {
     openDevicePicker();
     expect(await screen.findAllByText("Send video to…")).not.toHaveLength(0);
     expect(screen.queryByText("Devices")).not.toBeInTheDocument();
+  });
+
+  it("has one title: the visible heading names the dialog", async () => {
+    useUiStore.setState({ devicePickerOpen: false, pendingDevice: null });
+    renderWithProviders(<DevicePickerSheet />);
+    openDevicePicker();
+    const dialog = await screen.findByRole("dialog", { name: "Send video to…" });
+    expect(within(dialog).getAllByText("Send video to…")).toHaveLength(1);
+    const heading = within(dialog).getByRole("heading", { name: "Send video to…" });
+    expect(heading).not.toHaveClass("sr-only");
+    expect(dialog.getAttribute("aria-labelledby")).toBe(heading.id);
   });
 });
