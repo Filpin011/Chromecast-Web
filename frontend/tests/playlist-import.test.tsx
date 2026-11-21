@@ -79,6 +79,17 @@ describe("ImportPlaylistDialog", () => {
   });
 });
 
+describe("Playlist view search", () => {
+  it("has a 44px clear button", async () => {
+    search = new URLSearchParams("id=p1");
+    vi.spyOn(api.playlists, "get").mockResolvedValue(PLAYLIST);
+    vi.spyOn(api.playlists, "channels").mockResolvedValue({ items: [], total: 0 });
+    renderWithProviders(<PlaylistViewPage />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "news" } });
+    expect(screen.getByRole("button", { name: "Clear search" })).toHaveClass("size-11");
+  });
+});
+
 describe("Playlist view with a bad id", () => {
   it("shows the not-found state instead of an endless '…'", async () => {
     search = new URLSearchParams("id=nope");

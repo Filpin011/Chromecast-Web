@@ -39,7 +39,7 @@ export function SegmentedControl<T extends string>({
   value: T | null;
   onChange: (value: T) => void;
   kind?: "radio" | "tab";
-  /** `sm` = 36px, small text (narrow places: sidebar, menus); default 36px; `lg` = 40px (page-level tabs). */
+  /** `sm` = 36px, small text (narrow places: sidebar, menus); default 36px; `lg` = 40px (page-level tabs). Every size taps as 44px (`hit-area-44`, inside the group's padding). */
   size?: SegmentSize;
   compactIcons?: boolean;
   disabled?: boolean;
@@ -66,7 +66,7 @@ export function SegmentedControl<T extends string>({
             disabled={disabled || optDisabled}
             onClick={() => onChange(v)}
             className={cn(
-              "flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 font-medium transition-all disabled:opacity-50",
+              "hit-area-44 flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 font-medium transition-all disabled:opacity-50",
               size === "lg" ? "h-10 text-sm" : size === "sm" ? "h-9 text-xs" : "h-9 text-sm",
               active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}

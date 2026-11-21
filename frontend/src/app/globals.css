@@ -169,6 +169,22 @@
   }
 }
 
+/* At least a 44×44px tap target around a visually smaller control (a 36px segment or chip): an invisible
+   ::after, centred on the element, catches the taps. Leave room for it (padding of the parent, or a gap) so
+   neighbours don't overlap, and don't use it on an element that already draws an ::after. */
+@utility hit-area-44 {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
 @keyframes eq-bar {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
