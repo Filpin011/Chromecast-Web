@@ -1,6 +1,6 @@
 "use client";
 
-import { Compass, Monitor, Smartphone, X } from "lucide-react";
+import { AppWindow, Compass, Globe, Monitor, Smartphone, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { SiteTiles } from "@/components/favorites/site-tiles";
 import { Button } from "@/components/ui/button";
@@ -97,13 +97,17 @@ export function BrowserStart({
       </form>
       {sites.length > 0 && (
         <section className="space-y-2">
-          <h2 className="px-1 text-sm font-semibold text-muted-foreground">{t("sites.title")}</h2>
+          <h2 className="flex items-center gap-2 px-1 text-sm font-semibold text-muted-foreground">
+            <Globe className="size-4" /> {t("sites.title")}
+          </h2>
           <SiteTiles sites={sites} onOpen={(url) => !busy && onOpen(url)} />
         </section>
       )}
       {sessions.length > 0 && (
         <section className="space-y-2">
-          <h2 className="px-1 text-sm font-semibold text-muted-foreground">{t("browser.openSessions")}</h2>
+          <h2 className="flex items-center gap-2 px-1 text-sm font-semibold text-muted-foreground">
+            <AppWindow className="size-4" /> {t("browser.openSessions")}
+          </h2>
           <ul className="space-y-2">
             {sessions.map((s) => (
               <li key={s.id} className="flex items-center gap-1 rounded-2xl border bg-card">
