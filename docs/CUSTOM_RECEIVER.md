@@ -18,17 +18,23 @@ plain HTML/CSS/JS, no build step, Google's CAF SDK loaded from `www.gstatic.com`
 
 | | Default Media Receiver | Custom receiver |
 |---|---|---|
-| Loading | small spinner | big spinner + "Loading…" / "Caricamento…", after 5 s of buffering "Slow connection, still loading…" / "Connessione lenta, caricamento in corso…" |
+| Look | Google's | the app's own TV look: the idle image's violet backdrop, the Chromecast Web logo with **animated cast waves**, the app's fonts, colours, status chip and LIVE badge |
+| Loading | small spinner | a ring spinning around the logo, the media title and a "Loading…" / "Caricamento…" chip; after 5 s of buffering it turns amber: "Slow connection, still loading…" / "Connessione lenta, caricamento in corso…" |
 | Playback error | black screen / back to the backdrop | "Stream interrupted, reconnecting…" / "Flusso interrotto, riconnessione…" until the server's next LOAD (the backend re-LOADs live streams after an error; the receiver never reloads on its own). After 60 s without a new LOAD it falls back to the idle screen. |
-| Overlay | Google's | title, artwork, LIVE badge for live streams, progress bar + times for VOD; shown on start / pause / seek, auto-hidden after 5 s while playing |
-| Idle | Google's backdrop | app name + clock; the idle image (Settings → idle image) is shown full screen with the clock |
+| Overlay | Google's | logo, title, artwork, LIVE badge for live streams, violet progress bar + times for VOD; shown on start / pause / seek, auto-hidden after 5 s while playing; the app's round play/pause button while paused |
+| Idle | Google's backdrop | the idle image's layout written live (translated) with a clock; a custom idle image (Settings → idle image) is shown full screen with the clock |
 | Flaky live HLS | CAF defaults | larger resume buffer, more segment retries, explicit request timeouts (below) |
 
 <p align="center">
-  <img src="screenshots/receiver-idle.png" width="32%" alt="Idle screen with clock">
-  <img src="screenshots/receiver-loading.png" width="32%" alt="Slow connection, still loading">
-  <img src="screenshots/receiver-reconnecting.png" width="32%" alt="Stream interrupted, reconnecting">
+  <img src="screenshots/receiver-idle.jpg" width="32%" alt="Idle screen with clock">
+  <img src="screenshots/receiver-loading.jpg" width="32%" alt="Slow connection, still loading">
+  <img src="screenshots/receiver-reconnecting.jpg" width="32%" alt="Stream interrupted, reconnecting">
 </p>
+
+The backdrop (`backdrop.jpg`, the idle image without text, logo and waves) and `icon.svg` are rendered
+from `docs/assets/` by `make brand` (or `scripts/brand.py --receiver`). The waves are seven CSS arcs that
+grow from the logo and fade (transform/opacity only, so the Chromecast's GPU does the work); they run only
+while the branded screen is visible, never over a video.
 
 The TV text language follows the device's `navigator.language` (Italian when it starts with `it`,
 English otherwise). The LOAD semantics stay those of the Default Media Receiver: the backend sends

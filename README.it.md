@@ -98,9 +98,9 @@ Chromecast, con un browser remoto integrato che trova da solo il video dentro le
 <details>
 <summary><b>Sulla TV con il player personalizzato</b> (opzionale, <code>CAST_APP_ID</code>)</summary>
 
-![Player personalizzato: schermata di attesa con orologio](docs/screenshots/receiver-idle.png)
-![Player personalizzato: connessione lenta, caricamento in corso](docs/screenshots/receiver-loading.png)
-![Player personalizzato: flusso interrotto, riconnessione](docs/screenshots/receiver-reconnecting.png)
+![Player personalizzato: schermata di attesa con orologio](docs/screenshots/receiver-idle.jpg)
+![Player personalizzato: connessione lenta, caricamento in corso](docs/screenshots/receiver-loading.jpg)
+![Player personalizzato: flusso interrotto, riconnessione](docs/screenshots/receiver-reconnecting.jpg)
 
 <sub>Il testo sulla TV segue la lingua del Chromecast (italiano o inglese).</sub>
 

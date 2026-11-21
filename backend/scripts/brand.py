@@ -3,6 +3,7 @@
     make brand          # = cd backend && .venv/bin/python scripts/brand.py
     .venv/bin/python scripts/brand.py --idle    # only the TV idle image (backend/app/static/idle.jpg)
     .venv/bin/python scripts/brand.py --banner  # only the README banners (docs/assets/banner*.jpg)
+    .venv/bin/python scripts/brand.py --receiver  # only the custom receiver's backdrop + logo
 
 Sources (hand-written, original artwork): ``docs/assets/icon.svg`` (rounded app icon) and
 ``docs/assets/icon-maskable.svg`` (full-bleed, mark inside the 80% safe zone). Rendered with the
@@ -26,6 +27,10 @@ ASSETS = ROOT / "docs" / "assets"
 PUBLIC_ICONS = ROOT / "frontend" / "public" / "icons"
 APP_DIR = ROOT / "frontend" / "src" / "app"
 IDLE_IMAGE = ROOT / "backend" / "app" / "static" / "idle.jpg"
+RECEIVER_DIR = ROOT / "backend" / "app" / "static" / "receiver"
+# The logo's place on the TV (centre x, centre y, size on a 1920x1080 canvas), shared by the idle image
+# and the custom receiver's backdrop: receiver.css draws its text, loading ring and clock around it.
+TV_MARK = (370, 394, 240)
 
 TAGLINE = "Cast live streams, IPTV playlists and web videos to your TV — from any phone on your home network."
 CHIPS = ["Live HLS / DASH", "IPTV playlists", "Remote browser", "Ad blocking", "yt-dlp", "Real-time sync"]
@@ -79,6 +84,8 @@ def _wallpaper_html(
     content: str,
     css: str,
     waves_from: float | None = None,
+    waves: bool = True,
+    draw_mark: bool = True,
 ) -> str:
     """The brand wallpaper: the logo's own motif - a screen sending ")))" - blown up to fill the frame.
 
@@ -87,6 +94,8 @@ def _wallpaper_html(
     gradients free of banding once compressed. Shapes come from the seeded script below, so every render
     is identical. Shared by the TV idle image and the README banners. ``waves_from``: radius of the first
     wave (default: just around the mark), e.g. to start the waves after text placed beside the mark.
+    ``waves=False`` / ``draw_mark=False`` leave the waves / the logo out (the custom receiver draws its
+    own logo and animates its waves in CSS, keeping only the halo behind the logo).
     """
     mx, my, msize = mark
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
@@ -117,7 +126,7 @@ def _wallpaper_html(
   baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/>
   <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 0"/>
   </filter><rect width="{width}" height="{height}" filter="url(#n)"/></svg>
-<img class="mark" src="{_data_url(icon)}" alt="">
+{f'<img class="mark" src="{_data_url(icon)}" alt="">' if draw_mark else ""}
 {content}
 <script>
 (() => {{  // scoped: Playwright's set_content() reuses the window, a second render would redeclare these
@@ -175,7 +184,7 @@ def _wallpaper_html(
   // giant cast waves ")))" from the mark, like the logo's own arcs, until past the right edge
   const waves = el("g", {{ fill: "none", "stroke-linecap": "round" }}, art);
   const step = 150 * Math.max(S, 0.5), first = {waves_from if waves_from is not None else "260 * Math.max(S, 0.5)"};
-  const count = Math.ceil((W - cx - first) / step) + 2;
+  const count = {"Math.ceil((W - cx - first) / step) + 2" if waves else "0"};
   for (let k = 0; k < count; k++) {{
     const r = first + k * step;
     const a = (Math.PI / 180) * Math.max(30, 46 - k * 1.6);
@@ -219,7 +228,7 @@ def _idle_html(icon: Path) -> str:
   .idle .chip{gap:16px;margin-top:34px;font-size:30px;padding:14px 30px}
   .idle .dot{width:14px;height:14px}
   .hint{position:absolute;left:250px;bottom:110px;font-size:26px;color:rgba(226,223,255,.55)}"""
-    return _wallpaper_html(icon, width=1920, height=1080, mark=(370, 394, 240), content=content, css=css)
+    return _wallpaper_html(icon, width=1920, height=1080, mark=TV_MARK, content=content, css=css)
 
 
 # README banners (rendered at 2x for sharp text on high-DPI screens), one per README language
@@ -265,6 +274,89 @@ async def render_idle(page: Page, icon: Path) -> None:
     write(IDLE_IMAGE, await page.screenshot(type="jpeg", quality=88))
 
 
+def receiver_waves_svg() -> str:
+    """The idle image's cast waves and their particles (same geometry and seed as ``_wallpaper_html``,
+    1920x1080, mark at ``TV_MARK``), animated with CSS inside the SVG for the custom receiver: a pulse of
+    light runs outwards along the arcs, the particles twinkle and drift along the waves."""
+    import math
+
+    cx, cy, _ = TV_MARK
+    seed = 7
+
+    def rnd() -> float:
+        nonlocal seed
+        seed = (seed * 16807) % 2147483647
+        return seed / 2147483647
+
+    step, first = 150.0, 260.0
+    count = math.ceil((1920 - cx - first) / step) + 2
+    waves, dots = [], []
+    for k in range(count):
+        r = first + k * step
+        a = math.radians(max(30, 46 - k * 1.6))
+        x1, y1 = cx + r * math.cos(-a), cy + r * math.sin(-a)
+        x2, y2 = cx + r * math.cos(a), cy + r * math.sin(a)
+        base = max(0.12, 0.85 - k * 0.07)
+        waves.append(
+            f'<path class="w" style="--o:{base:.2f};--p:{min(0.95, base * 1.9 + 0.1):.2f};'
+            f'animation-delay:{k * 0.42 - 6:.2f}s" d="M {x1:.1f} {y1:.1f} A {r:.0f} {r:.0f} 0 0 1 {x2:.1f} {y2:.1f}" '
+            f'stroke-width="{3 + k * 0.9:.1f}" transform="rotate({(1 if k % 2 else -1) * 1.2} {cx} {cy})"/>'
+        )
+        for _ in range(4 + k):
+            ang = (rnd() * 2 - 1) * a
+            rr = r + (rnd() - 0.5) * 18
+            size = 1 + rnd() * 2.6
+            o = 0.25 + rnd() * 0.6
+            dur = 2.6 + (k * 7 + len(dots) * 13) % 37 / 10  # 2.6-6.2 s, varied but deterministic
+            delay = -((len(dots) * 1.37) % dur)
+            drift = ("d1", "d2", "d3")[len(dots) % 3]
+            dots.append(
+                f'<circle class="p {drift}" style="--o:{o:.2f};animation-duration:{dur:.1f}s,{18 + k}s;'
+                f'animation-delay:{delay:.2f}s,{delay * 2:.2f}s" cx="{cx + rr * math.cos(ang):.1f}" '
+                f'cy="{cy + rr * math.sin(ang):.1f}" r="{size:.1f}"/>'
+            )
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+<!-- Generated by backend/scripts/brand.py (receiver_waves_svg): the idle image's waves, animated. -->
+<defs><linearGradient id="wave" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset="0.25" stop-color="#c9c0ff" stop-opacity="0.55"/>
+<stop offset="1" stop-color="#6A55F0" stop-opacity="0"/></linearGradient></defs>
+<style>
+.w {{ fill: none; stroke: url(#wave); stroke-linecap: round; opacity: var(--o);
+  animation: pulse 6s ease-in-out infinite; }}
+@keyframes pulse {{ 0%, 70%, 100% {{ opacity: var(--o); }} 82% {{ opacity: var(--p); }} }}
+.p {{ fill: #d9d2ff; opacity: 0; transform-box: view-box; transform-origin: {cx}px {cy}px;
+  animation-name: twinkle, drift; animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite; animation-direction: normal, alternate; }}
+.d2 {{ animation-name: twinkle, drift2; }}
+.d3 {{ animation-name: twinkle, drift3; }}
+@keyframes twinkle {{ 0%, 100% {{ opacity: 0; }} 35%, 60% {{ opacity: var(--o); }} }}
+@keyframes drift {{ from {{ transform: rotate(-2.5deg); }} to {{ transform: rotate(2.5deg); }} }}
+@keyframes drift2 {{ from {{ transform: rotate(2deg) scale(0.99); }} to {{ transform: rotate(-2deg) scale(1.01); }} }}
+@keyframes drift3 {{ from {{ transform: rotate(-1.5deg) scale(1.01); }} to {{ transform: rotate(3deg) scale(0.99); }} }}
+</style>
+{chr(10).join(waves)}
+{chr(10).join(dots)}
+</svg>
+"""
+
+
+async def render_receiver(page: Page, icon: Path) -> None:
+    """The custom receiver's backdrop: the idle image without its text, logo and waves (the receiver
+    writes the text live, translated, and draws the logo with animated waves and a loading ring around
+    it), plus the logo as a file."""
+    await page.set_viewport_size({"width": 1920, "height": 1080})
+    html = _wallpaper_html(
+        icon, width=1920, height=1080, mark=TV_MARK, content="", css="", waves=False, draw_mark=False
+    )
+    await page.set_content(html)
+    await page.wait_for_load_state("load")
+    write(RECEIVER_DIR / "backdrop.jpg", await page.screenshot(type="jpeg", quality=86))
+    (RECEIVER_DIR / "waves.svg").write_text(receiver_waves_svg())
+    print(f"  {(RECEIVER_DIR / 'waves.svg').relative_to(ROOT)}")
+    shutil.copyfile(icon, RECEIVER_DIR / "icon.svg")
+    print(f"  {(RECEIVER_DIR / 'icon.svg').relative_to(ROOT)}")
+
+
 def optimise_png(data: bytes, colors: int = 256) -> bytes:
     """Shrink a PNG like pngquant: opaque images get a dithered 256-colour palette (no banding on
     gradients), images with transparency are re-encoded losslessly."""
@@ -289,12 +381,14 @@ def write(path: Path, data: bytes) -> None:
 
 async def main() -> None:
     icon, maskable = ASSETS / "icon.svg", ASSETS / "icon-maskable.svg"
-    only = {a.lstrip("-") for a in sys.argv[1:]} & {"idle", "banner"}
+    only = {a.lstrip("-") for a in sys.argv[1:]} & {"idle", "banner", "receiver"}
     if only:
         async with async_playwright() as p:
             browser = await p.chromium.launch()
             if "idle" in only:
                 await render_idle(await browser.new_page(), icon)
+            if "receiver" in only:
+                await render_receiver(await browser.new_page(), icon)
             if "banner" in only:
                 await render_banners(await browser.new_page(device_scale_factor=2), icon)
             await browser.close()
@@ -321,6 +415,7 @@ async def main() -> None:
         await page.wait_for_load_state("load")
         write(ASSETS / "social-preview.png", optimise_png(await page.screenshot()))
         await render_idle(page, icon)
+        await render_receiver(page, icon)
         await render_banners(await browser.new_page(device_scale_factor=2), icon)
         await browser.close()
     shutil.copyfile(icon, PUBLIC_ICONS / "icon.svg")

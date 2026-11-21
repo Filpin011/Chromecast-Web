@@ -28,15 +28,17 @@
     slow: 'Connessione lenta, caricamento in corso…',
     error: 'Flusso interrotto, riconnessione…',
     live: 'LIVE',
-    ready: 'Pronto per la trasmissione',
-    status: 'Chromecast-Web'
+    ready: 'Pronto per trasmettere',
+    hint: 'Apri Chromecast Web da un browser qualsiasi per iniziare a trasmettere',
+    status: 'Chromecast Web'
   } : {
     loading: 'Loading…',
     slow: 'Slow connection, still loading…',
     error: 'Stream interrupted, reconnecting…',
     live: 'LIVE',
     ready: 'Ready to cast',
-    status: 'Chromecast-Web'
+    hint: 'Open Chromecast Web from any browser to start casting',
+    status: 'Chromecast Web'
   };
   document.documentElement.lang = IT ? 'it' : 'en';
 
@@ -44,15 +46,17 @@
   var body = document.body;
   function $(id) { return document.getElementById(id); }
   var el = {
-    still: $('still'), clock: $('clock'), idleText: $('idle-text'),
-    loadingText: $('loading-text'), loadingTitle: $('loading-title'),
-    errorText: $('error-text'), errorDetail: $('error-detail'),
-    art: $('art'), live: $('live'), title: $('title'),
+    still: $('still'), clock: $('clock'),
+    stageTitle: $('stage-title'), stageStatus: $('stage-status'), hint: $('hint'),
+    art: $('art'), liveText: $('live-text'), title: $('title'),
     barFill: $('bar-fill'), pos: $('pos'), dur: $('dur')
   };
-  el.idleText.textContent = T.ready;
-  el.errorText.textContent = T.error;
-  el.live.textContent = T.live;
+  var APP_NAME = 'Chromecast Web';
+  var mediaTitle = '';
+  el.stageTitle.textContent = APP_NAME;
+  el.stageStatus.textContent = T.ready;
+  el.hint.textContent = T.hint;
+  el.liveText.textContent = T.live;
 
   function log(event, details) {
     // one line per event, key=value details (visible in chrome://inspect)
@@ -85,11 +89,13 @@
     slowTimer = clear(slowTimer);
     errorTimer = clear(errorTimer);
     body.classList.remove('slow');
+    // the branded stage: app name + "ready" when idle, the media title + its status otherwise
+    el.stageTitle.textContent = next === 'idle' ? APP_NAME : (mediaTitle || APP_NAME);
+    el.stageStatus.textContent = next === 'error' ? T.error : next === 'loading' ? T.loading : T.ready;
     if (next === 'loading') {
-      el.loadingText.textContent = T.loading;
       slowTimer = setTimeout(function () {
         body.classList.add('slow');
-        el.loadingText.textContent = T.slow;
+        el.stageStatus.textContent = T.slow;
         log('slow_loading', { after_ms: SLOW_LOADING_MS });
       }, SLOW_LOADING_MS);
     } else if (next === 'error') {
@@ -138,7 +144,8 @@
     var images = md.images || [];
     var title = md.title || '';
     el.title.textContent = title;
-    el.loadingTitle.textContent = title;
+    mediaTitle = title;
+    if (state === 'loading' || state === 'error') el.stageTitle.textContent = title || APP_NAME;
     if (images.length && images[0].url) el.art.setAttribute('src', images[0].url);
     else el.art.removeAttribute('src');
     isLive = !!media && media.streamType === cast.framework.messages.StreamType.LIVE;
@@ -217,7 +224,6 @@
   pm.addEventListener(E.ERROR, function (e) {
     log('error', { detailedErrorCode: e.detailedErrorCode, reason: e.reason || '-' });
     if (isImage) return;
-    el.errorDetail.textContent = e.detailedErrorCode ? 'code ' + e.detailedErrorCode : '';
     setState('error', 'error');
   });
 

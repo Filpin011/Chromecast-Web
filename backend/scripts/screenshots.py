@@ -60,8 +60,11 @@ class Shooter:
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(settle * 1000)
 
-    async def shot(self, page: Page, name: str) -> None:
+    async def shot(self, page: Page, name: str, *, jpeg: bool = False) -> None:
         await page.wait_for_timeout(600)  # let sheet / panel animations finish
+        if jpeg:  # gradient-heavy TV screens: a 256-colour palette washes out their accents
+            write(SHOTS / f"{name}.jpg", await page.screenshot(type="jpeg", quality=86))
+            return
         data = await page.screenshot(animations="disabled", caret="hide")
         self.png[name] = data
         write(SHOTS / f"{name}.png", optimise_png(data))
@@ -178,28 +181,35 @@ async def run(base: str, content_port: int) -> dict[str, bytes]:
         page = await ctx.new_page()
         await page.route("**/www.gstatic.com/**", lambda route: route.fulfill(body="", content_type="text/javascript"))
         await page.goto(f"{base}/receiver/")
-        await page.evaluate(
-            """() => {
-              document.getElementById('clock').textContent = '21:30';
-              document.getElementById('loading-title').textContent = 'Northern Lights Live — Arctic Sky Cam';
-              document.getElementById('error-detail').textContent = 'Northern Lights Live — Arctic Sky Cam';
-            }"""
-        )
-        for state, name, extra in (
-            ("idle", "receiver-idle", ""),
-            ("loading", "receiver-loading", "Slow connection, still loading…"),
-            ("error", "receiver-reconnecting", ""),
+        async with httpx.AsyncClient(base_url=base) as c:
+            players = (await c.get("/api/state")).json()["players"].values()
+        thumb = next((p["thumbnail"] for p in players if p.get("thumbnail")), "") or ""
+        title = "Northern Lights Live — Arctic Sky Cam"
+        for state, name, status, slow in (
+            ("idle", "receiver-idle", None, False),
+            ("loading", "receiver-loading", "Slow connection, still loading…", True),
+            ("error", "receiver-reconnecting", None, False),
+            ("playing", "receiver-playing", None, False),
         ):
             await page.evaluate(
-                """([state, text]) => {
+                """([state, title, status, slow, thumb]) => {
+                  const $ = (id) => document.getElementById(id);
+                  $('clock').textContent = '21:30';
+                  $('title').textContent = title;
+                  $('stage-title').textContent = state === 'idle' ? 'Chromecast Web' : title;
+                  $('stage-status').textContent = status || {idle: 'Ready to cast',
+                    error: 'Stream interrupted, reconnecting…'}[state] || '';
+                  $('art').src = thumb;
+                  $('video').poster = thumb;
                   document.body.dataset.state = state;
-                  document.body.classList.toggle('slow', !!text);
-                  if (text) document.getElementById('loading-text').textContent = text;
+                  document.body.classList.toggle('slow', slow);
+                  document.body.classList.toggle('is-live', state === 'playing');
+                  document.body.classList.toggle('overlay', state === 'playing');
                 }""",
-                [state, extra],
+                [state, title, status, slow, thumb],
             )
-            await page.wait_for_timeout(600)
-            await sh.shot(page, name)
+            await page.wait_for_timeout(1200)
+            await sh.shot(page, name, jpeg=True)
         await ctx.close()
         await browser.close()
     return sh.png

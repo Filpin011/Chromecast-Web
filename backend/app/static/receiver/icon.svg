@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Chromecast Web</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8F7DFF"/>
+      <stop offset="0.55" stop-color="#6A55F0"/>
+      <stop offset="1" stop-color="#4128C9"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.18" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="114" fill="url(#glow)"/>
+  <g id="mark">
+    <!-- screen -->
+    <rect x="92" y="118" width="328" height="222" rx="40" fill="url(#screen)" stroke="#FFFFFF" stroke-width="22"/>
+    <!-- stand -->
+    <path d="M196 392 H316" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" fill="none"/>
+    <g transform="translate(-16 0)">
+    <!-- play -->
+    <path d="M200 186 L200 272 L270 229 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="20" stroke-linejoin="round"/>
+    <!-- waves -->
+    <path d="M296 182 A66 66 0 0 1 296 276" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" opacity="0.9"/>
+    <path d="M330 156 A104 104 0 0 1 330 302" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none" opacity="0.6"/>
+    </g>
+  </g>
+</svg>

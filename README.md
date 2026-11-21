@@ -94,9 +94,9 @@ with a built-in remote browser that finds the video inside web pages for you.
 <details>
 <summary><b>On the TV with the custom player</b> (optional, <code>CAST_APP_ID</code>)</summary>
 
-![Custom player: idle screen with clock](docs/screenshots/receiver-idle.png)
-![Custom player: slow connection, still loading](docs/screenshots/receiver-loading.png)
-![Custom player: stream interrupted, reconnecting](docs/screenshots/receiver-reconnecting.png)
+![Custom player: idle screen with clock](docs/screenshots/receiver-idle.jpg)
+![Custom player: slow connection, still loading](docs/screenshots/receiver-loading.jpg)
+![Custom player: stream interrupted, reconnecting](docs/screenshots/receiver-reconnecting.jpg)
 
 </details>
 
