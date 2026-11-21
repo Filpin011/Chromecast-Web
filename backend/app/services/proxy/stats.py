@@ -168,7 +168,10 @@ class ProxyStats:
         st = self._get(token, url)
         duration = st.durations.get(url)
         slow = total > SLOW_SECONDS or (duration is not None and total > duration)
-        aborted = outcome != "ok"
+        # a player dropping a segment it was getting in time (seek, quality switch, start-up,
+        # preview closed) is normal; it is a problem only when the segment was taking too long
+        cancelled = outcome == "client-gone" and not slow
+        aborted = outcome != "ok" and not cancelled
         st.segments += 1
         st.bytes += nbytes
         st.total_ms += total * 1000
@@ -179,7 +182,9 @@ class ProxyStats:
             f"status={status} bytes={nbytes} ttfb={_ms(ttfb)} total={_ms(total)}"
             + (f" duration={_num(duration)}s" if duration is not None else "")
         )
-        if outcome == "client-gone":
+        if cancelled:
+            log.debug("%s: cancelled by the player after %.1f s (%s)", where, total, timing)
+        elif outcome == "client-gone":
             log.warning("%s: client gave up after %.1f s, %d bytes (%s)", where, total, nbytes, timing)
         elif outcome == "upstream-error":
             log.warning("%s: upstream aborted mid-stream after %.1f s: %s (%s)", where, total, detail, timing)

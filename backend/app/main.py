@@ -87,6 +87,8 @@ def mount_frontend(app: FastAPI, frontend_dir: Path) -> None:
         root = frontend_dir
         if not root.is_dir():
             raise AppError(404, "Frontend not built", "not_found")
+        if full_path in ("apple-touch-icon.png", "apple-touch-icon-precomposed.png"):
+            full_path = "icons/apple-touch-icon.png"  # iOS asks the root before reading the page's <link>
         hit = _frontend_file(root, full_path)
         if hit is None:
             last = full_path.rsplit("/", 1)[-1]

@@ -105,6 +105,8 @@ class AccessFilter(logging.Filter):
             return False
         if not self.verbose and str(path).startswith(("/proxy/", "/restream/")):
             return False  # media errors: the proxy / restream log them with more detail
+        if not self.verbose and code == 404 and method == "GET" and str(path).split("?")[0] == "/api/local":
+            return False  # the Files section asks on every visit; 404 = MEDIA_ROOT not set
         record.args = (client, method, short_path(str(path)), version, status)
         return True
 

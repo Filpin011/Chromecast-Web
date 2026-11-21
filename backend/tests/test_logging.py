@@ -256,3 +256,21 @@ def test_repeated_upstream_errors_are_coalesced(monkeypatch):
     assert c.hit(("tok", "other", "refused")) == 0  # other keys are independent
     clock[0] += 16
     assert c.hit(key) == 2  # logged again, with the count of swallowed ones
+
+
+def test_player_cancelling_a_fast_segment_is_not_a_warning(caplog):
+    from app.services.proxy.stats import ProxyStats
+
+    stats = ProxyStats()
+    with caplog.at_level(logging.DEBUG, logger="app.services.proxy.stats"):
+        stats.segment("012345abcdef", "https://cdn.example.com/a/seg1.ts", status=200, nbytes=65536,
+                      ttfb=0.3, total=0.4, outcome="client-gone")
+    rec = [r for r in caplog.records if "seg1.ts" in r.getMessage()]
+    assert rec and rec[0].levelno == logging.DEBUG and "cancelled by the player" in rec[0].getMessage()
+
+
+def test_access_filter_hides_the_files_section_probe():
+    flt = AccessFilter()
+    fmt = '%s - "%s %s HTTP/%s" %d'
+    assert not flt.filter(record("uvicorn.access", fmt, ("c", "GET", "/api/local", "1.1", 404)))
+    assert flt.filter(record("uvicorn.access", fmt, ("c", "GET", "/api/local", "1.1", 500)))
