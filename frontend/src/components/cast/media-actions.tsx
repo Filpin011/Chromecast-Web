@@ -19,7 +19,8 @@ const COLUMNS = [
  *
  * The primary column is `minmax(0,1fr)` (a plain `1fr` cannot shrink below the label's min-content
  * width and pushes the icon buttons out of the card on 360px phones). It is a container so the
- * label can drop "now" and its padding on narrow cards; `truncate` is the last-resort guarantee.
+ * label can drop "now" and its padding on narrow cards, and the button (its own container) drops its icon
+ * when the label would not fit ("Trasmetti" next to four icon buttons); `truncate` is the last resort.
  */
 export function MediaActions({
   onCast,
@@ -44,18 +45,18 @@ export function MediaActions({
   const t = useT();
   const icons = [onWatch, onQueue, onFavorite, onOpenBrowser].filter(Boolean).length;
   return (
-    <div className={cn("@container grid gap-2", COLUMNS[icons], className)}>
+    <div className={cn("@container/actions grid gap-2", COLUMNS[icons], className)}>
       <Button
         size="lg"
         onClick={onCast}
         disabled={busy}
         aria-label={t("media.castNow")}
         data-testid="cast-now"
-        className="min-w-0 gap-2 rounded-xl px-3 @[22rem]:px-5"
+        className="@container/cast min-w-0 gap-2 rounded-xl px-3 @[22rem]/actions:px-5"
       >
-        <Cast className="size-5" />
-        <span className="truncate @[22rem]:hidden">{t("media.castShort")}</span>
-        <span className="hidden truncate @[22rem]:inline">{t("media.castNow")}</span>
+        <Cast className="size-5 @max-[7.5rem]/cast:hidden" />
+        <span className="truncate @[22rem]/actions:hidden">{t("media.castShort")}</span>
+        <span className="hidden truncate @[22rem]/actions:inline">{t("media.castNow")}</span>
       </Button>
       {onWatch && (
         <Button size="icon-lg" variant="secondary" aria-label={t("localPlayer.watchHere")} title={t("localPlayer.watchHere")} onClick={onWatch} className="rounded-xl">
