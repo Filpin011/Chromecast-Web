@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Compass, Download, ListVideo, Play, RotateCw, ShieldCheck, Subtitles } from "lucide-react";
+import { AlertCircle, Cast, Compass, Download, ListVideo, Play, RotateCw, ShieldCheck, Subtitles } from "lucide-react";
 import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -255,8 +255,9 @@ export function ResolveErrorCard({
           variant={siteFailed && !onRetry ? "default" : "secondary"}
           disabled={busy}
           onClick={() => cast({ input })}
-          className={btn}
+          className={cn(btn, "gap-2")}
         >
+          <Cast className="size-5" />
           {t("result.castAnyway")}
         </Button>
       </div>
