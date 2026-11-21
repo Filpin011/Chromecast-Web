@@ -70,8 +70,12 @@ def test_access_filter_hides_successful_reads_but_keeps_mutations_and_errors():
     assert not flt.filter(record("uvicorn.access", fmt, ("1.2.3.4:5", "GET", "/api/state", "1.1", 200)))
     assert not flt.filter(record("uvicorn.access", fmt, ("1.2.3.4:5", "GET", "/_next/static/a.js", "1.1", 304)))
     assert flt.filter(record("uvicorn.access", fmt, ("1.2.3.4:5", "POST", "/api/devices/x/play", "1.1", 200)))
+    # media errors are left to the proxy's own (richer) log line; shortened when verbose
+    assert not flt.filter(record("uvicorn.access", fmt, ("1.2.3.4:5", "GET", seg, "1.1", 404)))
+    assert flt.filter(record("uvicorn.access", fmt, ("1.2.3.4:5", "GET", "/api/nope", "1.1", 404)))
     err = record("uvicorn.access", fmt, ("1.2.3.4:5", "GET", seg, "1.1", 404))
-    assert flt.filter(err) and TOKEN not in err.getMessage() and "/proxy/012345/…/seg.ts" in err.getMessage()
+    assert AccessFilter(verbose=True).filter(err) and TOKEN not in err.getMessage()
+    assert "/proxy/012345/…/seg.ts" in err.getMessage()
     assert AccessFilter(verbose=True).filter(record("uvicorn.access", fmt, ("c", "GET", "/api/state", "1.1", 200)))
     ws = UvicornErrorFilter()
     assert not ws.filter(record("uvicorn.error", "connection open", ()))
@@ -238,3 +242,17 @@ async def test_media_status_log_names_device_idle_reason_and_content_once(caplog
         'media status "Salotto" (uuid-123): PLAYING -> IDLE idleReason=ERROR',
     ]
     assert caplog.records[1].levelno == logging.WARNING
+
+
+def test_repeated_upstream_errors_are_coalesced(monkeypatch):
+    from app.services.proxy import stream
+
+    clock = [100.0]
+    monkeypatch.setattr(stream.time, "monotonic", lambda: clock[0])
+    c = stream._Coalescer(window=15)
+    key = ("tok", "cdn/index.m3u8", "refused")
+    assert c.hit(key) == 0  # first one logged
+    assert c.hit(key) is None and c.hit(key) is None  # swallowed within the window
+    assert c.hit(("tok", "other", "refused")) == 0  # other keys are independent
+    clock[0] += 16
+    assert c.hit(key) == 2  # logged again, with the count of swallowed ones

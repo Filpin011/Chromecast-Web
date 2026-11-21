@@ -28,6 +28,8 @@ def fast_recovery(monkeypatch):
     monkeypatch.setattr(cast_service, "RECOVERY_MIN_PLAYED", 0.3)
     monkeypatch.setattr(cast_service, "RECOVERY_OUTCOME_TIMEOUT", 1.0)
     monkeypatch.setattr(cast_service, "STALL_AFTER", 0.1)
+    monkeypatch.setattr(cast_service, "STEADY_AFTER", 0.05)
+    monkeypatch.setattr(cast_service, "LIVE_STALL_RELOAD", 60.0)  # the watchdog has its own tests
 
 
 @pytest.fixture
@@ -253,4 +255,55 @@ async def test_stalled_since_after_long_buffering(svc, monkeypatch):
     assert svc.cast.player(DEV).stalled_since is None
     await wait(lambda: any(p and p["stalled_since"] for p in states(q)))  # pushed without a status event
     await wait(lambda: svc.cast.player(DEV).player_state == "PLAYING")
-    assert svc.cast.player(DEV).stalled_since is None
+    await wait(lambda: svc.cast.player(DEV).stalled_since is None)  # after STEADY_AFTER of PLAYING
+
+
+def set_state(svc, state):
+    """Make the fake receiver report ``state`` (as a real one does while it rebuffers)."""
+    driver = svc.cast.driver
+    driver.status(DEV).player_state = state
+    driver._emit("status", DEV)
+
+
+async def test_playing_blips_do_not_end_a_stall(svc):
+    # a receiver starved by a stalled source: BUFFERING with sub-second PLAYING blips
+    await start_live(svc)
+    set_state(svc, "BUFFERING")
+    await asyncio.sleep(0.15)
+    since = svc.cast.player(DEV).stalled_since
+    assert since is not None
+    set_state(svc, "PLAYING")
+    await asyncio.sleep(0.02)  # shorter than STEADY_AFTER
+    set_state(svc, "BUFFERING")
+    assert svc.cast.player(DEV).stalled_since == since  # still the same stall
+    set_state(svc, "PLAYING")
+    await wait(lambda: svc.cast.player(DEV).stalled_since is None)
+
+
+async def test_stalled_live_stream_is_reloaded_by_the_watchdog(svc, monkeypatch):
+    monkeypatch.setattr(cast_service, "LIVE_STALL_RELOAD", 0.3)
+    await start_live(svc)
+    q = svc.hub.subscribe()
+    n = len(loads(svc))
+    # flapping, never IDLE: only the watchdog can notice
+    for _ in range(40):
+        if svc.cast._meta[DEV].recovering:
+            break
+        set_state(svc, "BUFFERING")
+        await asyncio.sleep(0.03)
+        set_state(svc, "PLAYING")
+        await asyncio.sleep(0.01)
+    assert svc.cast._meta[DEV].recovering
+    await wait(lambda: not svc.cast._meta[DEV].recovering)
+    assert len(loads(svc)) == n + 1  # reloaded once
+    assert "stream_restored" in [t.get("code") for t in toasts(q)]
+
+
+async def test_watchdog_ignores_vod(svc, monkeypatch):
+    monkeypatch.setattr(cast_service, "LIVE_STALL_RELOAD", 0.1)
+    await svc.cast.play(DEV, MP4, title="A")
+    await wait(lambda: svc.cast.player(DEV).player_state == "PLAYING")
+    n = len(loads(svc))
+    set_state(svc, "BUFFERING")
+    await asyncio.sleep(0.3)
+    assert not svc.cast._meta[DEV].recovering and len(loads(svc)) == n

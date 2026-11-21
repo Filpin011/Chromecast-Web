@@ -40,6 +40,14 @@ RECOVERY_MIN_PLAYED = 20.0
 RECOVERY_OUTCOME_TIMEOUT = 30.0
 # BUFFERING longer than this is reported as PlayerState.stalled_since.
 STALL_AFTER = 4.0
+# A stall ends only after PLAYING this long without buffering: a receiver starved by a stalled
+# source flips BUFFERING -> PLAYING -> BUFFERING every few seconds (it skips the segment it
+# can't get), and those blips must not reset the stall. Also how long a recovery reload must
+# play before it counts as successful.
+STEADY_AFTER = 3.0
+# A LIVE stream of ours stalled this long is reloaded (live edge) by the recovery even though
+# the receiver never gives up on it (it keeps retrying, reporting non-fatal network errors).
+LIVE_STALL_RELOAD = 25.0
 
 
 @dataclass
@@ -77,6 +85,32 @@ class _Meta:
             self.playing_since = None
 
 
+@dataclass
+class _Stall:
+    """One stall of a device's player (BUFFERING, possibly with short PLAYING blips)."""
+
+    started: float
+    since: datetime
+    reported: bool = False
+    blips: int = 0
+    report: asyncio.TimerHandle | None = None
+    steady: asyncio.TimerHandle | None = None
+    watchdog: asyncio.TimerHandle | None = None
+
+    def cancel(self) -> None:
+        for timer in (self.report, self.steady, self.watchdog):
+            if timer is not None:
+                timer.cancel()
+        self.report = self.steady = self.watchdog = None
+
+
+def _running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover - outside the event loop (sync callers)
+        return None
+
+
 class CastService:
     def __init__(
         self,
@@ -103,10 +137,10 @@ class CastService:
         self._play_locks: dict[str, asyncio.Lock] = {}
         self._epoch: dict[str, int] = {}
         self._recovery_tasks: dict[str, asyncio.Task[None]] = {}
-        # BUFFERING start per device (for stalled_since) and the timer that re-broadcasts
-        # the player once it counts as stalled.
-        self._buffering_since: dict[str, tuple[float, datetime]] = {}
-        self._stall_timers: dict[str, asyncio.TimerHandle] = {}
+        # Per device: the current stall (see _observe) and the timer confirming that a
+        # recovery reload keeps playing.
+        self._stalls: dict[str, _Stall] = {}
+        self._confirm_timers: dict[str, asyncio.TimerHandle] = {}
 
     # ------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -122,9 +156,12 @@ class CastService:
     async def stop(self) -> None:
         for t in list(self._tasks):
             t.cancel()
-        for h in self._stall_timers.values():
+        for stall in self._stalls.values():
+            stall.cancel()
+        self._stalls.clear()
+        for h in self._confirm_timers.values():
             h.cancel()
-        self._stall_timers.clear()
+        self._confirm_timers.clear()
         await self.driver.stop()
 
     def _spawn(self, coro) -> asyncio.Task[None]:  # type: ignore[no-untyped-def]
@@ -161,37 +198,103 @@ class CastService:
             self.hub.remove_player(device_id)
 
     def _observe(self, device_id: str, st: DeviceStatus, meta: _Meta, ours: bool) -> datetime | None:
-        """Track what the receiver reports (playing time of our media, BUFFERING start) and
-        return ``stalled_since``. Called for every status the service turns into a player."""
+        """Track what the receiver reports (playing time of our media, stalls) and return
+        ``stalled_since``. Called for every status the service turns into a player.
+
+        A stall starts with BUFFERING and ends after STEADY_AFTER of uninterrupted PLAYING (or
+        on IDLE / PAUSED): short PLAYING blips between BUFFERINGs belong to the same stall."""
         now = time.monotonic()
+        state = st.player_state
+        loop = _running_loop()
         if ours and not meta.showing_idle:
-            meta.mark_playing(st.player_state == "PLAYING", now)
+            meta.mark_playing(state == "PLAYING", now)
             waiter = meta.recovery_waiter
-            if st.player_state == "PLAYING" and waiter is not None and not waiter.done():
-                waiter.set_result(True)
-        if st.player_state != "BUFFERING" or (ours and meta.showing_idle):
-            self._buffering_since.pop(device_id, None)
-            if timer := self._stall_timers.pop(device_id, None):
+            if state == "PLAYING" and waiter is not None and not waiter.done():
+                if device_id not in self._confirm_timers and loop is not None:
+                    self._confirm_timers[device_id] = loop.call_later(
+                        STEADY_AFTER, self._confirm_playing, device_id, waiter
+                    )
+            elif (timer := self._confirm_timers.pop(device_id, None)) is not None:
                 timer.cancel()
+        stall = self._stalls.get(device_id)
+        if (ours and meta.showing_idle) or state not in ("BUFFERING", "PLAYING"):
+            if stall is not None:
+                self._end_stall(device_id, "state " + state)
             return None
-        since = self._buffering_since.get(device_id)
-        if since is None:
-            since = self._buffering_since[device_id] = (now, utcnow())
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:  # pragma: no cover - outside the event loop (sync callers)
-                loop = None
-            if loop is not None:
-                if timer := self._stall_timers.pop(device_id, None):
-                    timer.cancel()
-                self._stall_timers[device_id] = loop.call_later(STALL_AFTER + 0.05, self._on_stall_timer, device_id)
-        return since[1] if now - since[0] >= STALL_AFTER else None
+        if state == "BUFFERING":
+            if stall is None:
+                stall = self._stalls[device_id] = _Stall(now, utcnow())
+                if loop is not None:
+                    stall.report = loop.call_later(STALL_AFTER + 0.05, self._on_stall_timer, device_id)
+                    live = (meta.request is not None and meta.request.stream_type == "LIVE") or st.stream_type == "LIVE"
+                    if ours and live:
+                        stall.watchdog = loop.call_later(LIVE_STALL_RELOAD, self._on_live_stall, device_id)
+            elif stall.steady is not None:
+                stall.steady.cancel()
+                stall.steady = None
+                stall.blips += 1
+        elif stall is not None and stall.steady is None and loop is not None:  # PLAYING during a stall
+            stall.steady = loop.call_later(STEADY_AFTER, self._on_steady, device_id)
+        if stall is None:
+            return None
+        return stall.since if now - stall.started >= STALL_AFTER else None
+
+    def _end_stall(self, device_id: str, why: str) -> None:
+        stall = self._stalls.pop(device_id, None)
+        if stall is None:
+            return
+        stall.cancel()
+        if stall.reported:
+            log.info(
+                "player stall ended device=%s after=%.0fs why=%s blips=%d",
+                self._dev(device_id),
+                time.monotonic() - stall.started,
+                why,
+                stall.blips,
+            )
 
     def _on_stall_timer(self, device_id: str) -> None:
-        self._stall_timers.pop(device_id, None)
-        if device_id in self._buffering_since:
-            log.debug("player stalled device=%s buffering_for=%.1fs", self._dev(device_id), STALL_AFTER)
+        stall = self._stalls.get(device_id)
+        if stall is None:
+            return
+        stall.report = None
+        stall.reported = True
+        log.info("player stalled device=%s buffering_for=%.0fs", self._dev(device_id), STALL_AFTER)
+        self._push(device_id)
+
+    def _on_steady(self, device_id: str) -> None:
+        if (stall := self._stalls.get(device_id)) is not None:
+            stall.steady = None
+            self._end_stall(device_id, "playing again")
             self._push(device_id)
+
+    def _confirm_playing(self, device_id: str, waiter: asyncio.Future[bool]) -> None:
+        self._confirm_timers.pop(device_id, None)
+        if not waiter.done() and self.driver.status(device_id).player_state == "PLAYING":
+            waiter.set_result(True)
+
+    def _on_live_stall(self, device_id: str) -> None:
+        """A LIVE stream of ours has been stalled for LIVE_STALL_RELOAD: reload it."""
+        stall = self._stalls.get(device_id)
+        meta = self._meta.get(device_id)
+        if stall is None or meta is None:
+            return
+        stall.watchdog = None
+        if meta.recovering or meta.showing_idle or meta.load_failed or meta.request is None:
+            return
+        if self.driver.status(device_id).media_url not in (None, meta.media_url):
+            return
+        if self._should_recover(device_id, meta):
+            log.info(
+                "live stream stalled device=%s stalled_for=%.0fs blips=%d: reloading",
+                self._dev(device_id),
+                time.monotonic() - stall.started,
+                stall.blips,
+            )
+            self._start_recovery(device_id, meta)
+            return
+        log.info("live stream stalled device=%s: recovery attempts used up, giving up", self._dev(device_id))
+        self._spawn(self._give_up(device_id, meta))
 
     def build_player(self, device_id: str) -> PlayerState:
         st = self.driver.status(device_id)
@@ -286,6 +389,11 @@ class CastService:
                 if meta.recovering:
                     # a recovery reload failed: _recover moves on to the next attempt
                     if meta.recovery_waiter is not None and not meta.recovery_waiter.done():
+                        log.info(
+                            "recovery attempt failed device=%s attempt=%d step=playback",
+                            self._dev(device_id),
+                            meta.recovery_attempt,
+                        )
                         meta.recovery_waiter.set_result(False)
                     return
                 if self._should_recover(device_id, meta):
@@ -395,21 +503,34 @@ class CastService:
                 meta.recovering = False
                 meta.recovery_waiter = None
                 log.info("recovery gave up device=%s title=%r attempts=%d", self._dev(device_id), meta.title, total)
-                self._toast_playback_failed(meta)
-                if await self._play_next(device_id):
-                    return
-                if self.db.get_settings().show_idle_on_stop:
-                    try:
-                        await self._show_idle(device_id)
-                    except AppError as exc:
-                        log.info(
-                            "idle image after recovery failed device=%s detail=%s", self._dev(device_id), exc.detail
-                        )
-                else:
-                    self._push(device_id)
+                await self._give_up_locked(device_id, meta)
         finally:
             if self._recovery_tasks.get(device_id) is asyncio.current_task():
                 self._recovery_tasks.pop(device_id, None)
+
+    async def _give_up(self, device_id: str, meta: _Meta) -> None:
+        async with self._play_lock(device_id):
+            if self._meta.get(device_id) is meta and not meta.recovering:
+                await self._give_up_locked(device_id, meta)
+
+    async def _give_up_locked(self, device_id: str, meta: _Meta) -> None:
+        """The stream can't be recovered (caller holds the play lock): toast, then the next
+        queued item, the idle image or just the current state."""
+        self._end_stall(device_id, "gave up")
+        self._toast_playback_failed(meta)
+        if await self._play_next(device_id):
+            return
+        if self.db.get_settings().show_idle_on_stop:
+            try:
+                await self._show_idle(device_id)
+            except AppError as exc:
+                log.info("idle image after recovery failed device=%s detail=%s", self._dev(device_id), exc.detail)
+        else:
+            try:
+                await self.driver.stop_media(device_id)
+            except Exception as exc:  # the receiver may already be gone
+                log.debug("stop after give-up failed device=%s: %s", self._dev(device_id), exc)
+            self._push(device_id)
 
     async def _recovery_load(self, device_id: str, meta: _Meta, attempt: int) -> asyncio.Future[bool] | None:
         """One reload attempt (caller holds the play lock). Returns a future resolved when the

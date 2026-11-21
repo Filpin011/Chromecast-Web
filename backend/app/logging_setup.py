@@ -103,6 +103,8 @@ class AccessFilter(logging.Filter):
             return True
         if not self.verbose and code < 400 and method in QUIET_METHODS:
             return False
+        if not self.verbose and str(path).startswith(("/proxy/", "/restream/")):
+            return False  # media errors: the proxy / restream log them with more detail
         record.args = (client, method, short_path(str(path)), version, status)
         return True
 

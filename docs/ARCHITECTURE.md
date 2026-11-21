@@ -83,8 +83,12 @@ app.main:app`) gives uvicorn and the app one format: `2026-11-21 16:21:34 INFO  
 - URLs are always shortened with `short_url` (host + last path segment, no query); a proxy token
   is printed as its first 6 characters. Tokens, base64 `/proxy` paths and cookies never appear in full.
 - Access log: successful `GET`/`HEAD`/`OPTIONS` are hidden below DEBUG (media fetched by the
-  Chromecast, frontend assets, polling); mutations and every 4xx/5xx stay. httpx per-request
-  lines and pychromecast's INFO chatter only appear with `LOG_LEVEL=debug`.
+  Chromecast, frontend assets, polling); mutations and every 4xx/5xx stay, except `/proxy` and
+  `/restream` requests, whose failures the proxy logs itself with more detail. httpx per-request
+  lines and pychromecast's INFO chatter only appear with `LOG_LEVEL=debug`. A failing upstream
+  (the receiver retries a dead source several times a second) is logged once per 15 s per URL and
+  error, with the count of repeats. Rebuffering (`PLAYING` <-> `BUFFERING`) is DEBUG in the driver;
+  the service logs a stall once (`player stalled` / `player stall ended after=… blips=…`).
 - `/proxy` (`services/proxy/stats.py`): DEBUG line per segment (status, bytes, ttfb, total) and
   per media playlist (media sequence, segment count). INFO for a slow segment (> 5 s or longer than
   its EXTINF duration), a live playlist whose media sequence has not moved for 3 target durations
@@ -207,7 +211,7 @@ interface PlayerState {
   showing_idle_image: boolean;
   recovering: boolean;            // the receiver dropped the media mid-playback; the server is reloading it
   recovery_attempt: number;       // 1..3 while recovering, 0 otherwise
-  stalled_since: string | null;   // ISO; set once the receiver has been BUFFERING for > 4 s
+  stalled_since: string | null;   // ISO; set once a stall (BUFFERING, ignoring PLAYING blips < 3 s) lasts > 4 s
   updated_at: string;
 }
 
@@ -335,15 +339,21 @@ Backend behaviour notes (implemented in `backend/`):
   `PLAYING` at all, or any media that had been `PLAYING` for >= 20 s), the server reloads it instead of skipping it:
   up to 3 attempts, waiting 2 s, 5 s, 10 s before each. The first attempt reloads the same media; it is resolved again
   from its input when it is older than 3 min or a plain reload already failed (never for browser captures). An attempt
-  fails when the LOAD is rejected, the receiver reports `IDLE` / `ERROR` again, or it doesn't reach `PLAYING` within
-  30 s. `PLAYING` ends the recovery (`stream_restored` toast); the attempt budget refills only after the stream has
+  fails when the LOAD is rejected, the receiver reports `IDLE` / `ERROR` again, or it doesn't play steadily (3 s of
+  uninterrupted `PLAYING`) within 30 s. Steady playback ends the recovery (`stream_restored` toast); the attempt budget refills only after the stream has
   played 20 s again (a stream that keeps dying is not reloaded forever). When attempts run out: `playback_failed`
   toast, the queue advances, else the idle image when `show_idle_on_stop`. While recovering the player has
   `recovering: true` / `recovery_attempt` and keeps the media's title/thumbnail. stop / next / previous / go_live,
   a new play or enqueue-when-idle, the idle image and disconnect cancel the recovery; `play` / `toggle` while
   recovering reload the media right away. A LOAD rejected at the start (the 502 path) is never recovered.
-- `stalled_since` is set (and broadcast, without waiting for another status) once the receiver has been
-  `BUFFERING` for more than 4 s, and cleared on any other state.
+- **Live stall watchdog**: a receiver starved by a stalled or dead source often never gives up: it reports non-fatal
+  network errors (`detailedErrorCode` 310) and flips `BUFFERING` -> `PLAYING` -> `BUFFERING` every few seconds, skipping
+  the segments it can't get. A LIVE stream of ours stalled for 25 s (PLAYING blips < 3 s don't end a stall) is
+  therefore reloaded at the live edge through the same recovery (same attempts and budget); with the budget used up,
+  the server gives up as above (and stops the media when there is no idle image to show). Verified on a Chromecast
+  Ultra with a local origin whose segments hang mid-body.
+- `stalled_since` is set (and broadcast, without waiting for another status) once a stall has lasted more than 4 s.
+  A stall starts with `BUFFERING` and ends after 3 s of uninterrupted `PLAYING`, or on `IDLE` / `PAUSED`.
 - HLS whose CORS can't be verified (probed with `Origin: https://www.gstatic.com` on the playlist, first variant,
   audio rendition and their first segments; a CDN answering that Origin with an HTTP error is probed again without
   it, for master/live/segment format, and proxied), DASH whose manifest doesn't answer that Origin, any source needing

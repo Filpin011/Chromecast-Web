@@ -774,8 +774,14 @@ class PyChromecastDriver:
             if ms.content_id and ms.content_id != self._logged_content.get(device_id):
                 self._logged_content[device_id] = ms.content_id
                 details += f" content={_short(ms.content_id)}"
+            if ms.idle_reason == "ERROR":
+                level = logging.WARNING
+            elif {prev_state, state} == {"PLAYING", "BUFFERING"} and not details:
+                level = logging.DEBUG  # rebuffering: the service logs stalls once ("player stalled/stall ended")
+            else:
+                level = logging.INFO
             log.log(
-                logging.WARNING if ms.idle_reason == "ERROR" else logging.INFO,
+                level,
                 "media status %s: %s -> %s%s",
                 self._label(device_id),
                 prev_state,

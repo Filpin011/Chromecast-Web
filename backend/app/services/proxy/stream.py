@@ -32,6 +32,31 @@ from app.services.proxy.tokens import ProxyTarget, TokenRegistry
 
 log = logging.getLogger(__name__)
 
+
+class _Coalescer:
+    """Logs one line per key per ``window`` seconds; returns how many were swallowed since the
+    last logged one (None = swallow this one). A dead source is retried by the receiver several
+    times a second, and each try is the same failure."""
+
+    def __init__(self, window: float = 15.0, max_keys: int = 256) -> None:
+        self.window = window
+        self.max_keys = max_keys
+        self._seen: dict[tuple[str, ...], tuple[float, int]] = {}
+
+    def hit(self, key: tuple[str, ...]) -> int | None:
+        now = time.monotonic()
+        last = self._seen.get(key)
+        if last is not None and now - last[0] < self.window:
+            self._seen[key] = (last[0], last[1] + 1)
+            return None
+        if len(self._seen) >= self.max_keys:
+            self._seen.clear()
+        self._seen[key] = (now, 0)
+        return last[1] if last is not None else 0
+
+
+_UPSTREAM_ERRORS = _Coalescer()
+
 PLAYLIST_MAX_BYTES = 8 * 1024 * 1024
 SNIFF_BYTES = 512
 PASS_HEADERS = ("content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag")
@@ -197,10 +222,13 @@ class ProxyService:
                 self.client.build_request(method, url, headers=headers), stream=True
             )
         except httpx.HTTPError as exc:
-            log.warning(
-                "proxy %s upstream error %s %s: %s",
-                tok[:6], method, short_url(url), shorten_urls(str(exc)) or type(exc).__name__,
-            )
+            reason = shorten_urls(str(exc)) or type(exc).__name__
+            if (repeats := _UPSTREAM_ERRORS.hit((tok, short_url(url), reason))) is not None:
+                log.warning(
+                    "proxy %s upstream error %s %s: %s%s",
+                    tok[:6], method, short_url(url), reason,
+                    f" (+{repeats} more in the last {int(_UPSTREAM_ERRORS.window)}s)" if repeats else "",
+                )
             return Response(f"Upstream error: {exc}", status_code=502, headers=CORS)
 
         ct = upstream.headers.get("content-type", "")
