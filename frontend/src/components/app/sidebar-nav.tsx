@@ -44,7 +44,7 @@ export function SidebarNav() {
       </nav>
       <div className="space-y-2 border-t p-3">
         <DeviceButton showName />
-        <ThemeToggle />
+        <ThemeToggle size="sm" />
       </div>
     </aside>
   );

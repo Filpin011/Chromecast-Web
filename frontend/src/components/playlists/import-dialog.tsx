@@ -2,6 +2,7 @@
 
 import { FileUp, Link2, Loader2 } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { useImportPlaylist } from "@/hooks/queries";
 import type { Playlist } from "@/lib/api/types";
 import { useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 
 export function ImportPlaylistDialog({
   open,
@@ -57,28 +57,15 @@ export function ImportPlaylistDialog({
           <DialogTitle>{t("playlists.import")}</DialogTitle>
           <DialogDescription>{t("import.description")}</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist">
-          {(
-            [
-              ["url", Link2, t("import.fromUrl")],
-              ["file", FileUp, t("import.fromFile")],
-            ] as const
-          ).map(([id, Icon, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium",
-                tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
-              )}
-            >
-              <Icon className="size-4" /> {label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          kind="tab"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "url", label: t("import.fromUrl"), icon: Link2 },
+            { value: "file", label: t("import.fromFile"), icon: FileUp },
+          ]}
+        />
         <form onSubmit={submit} className="space-y-4">
           {tab === "url" ? (
             <div className="space-y-1.5">

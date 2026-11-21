@@ -3,6 +3,7 @@
 import { AppWindow, Compass, Globe, Monitor, Smartphone, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { SiteTiles } from "@/components/favorites/site-tiles";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { useFavorites } from "@/hooks/queries";
 import type { BrowserSession } from "@/lib/api/types";
@@ -11,7 +12,6 @@ import type { ViewportMode } from "@/lib/browser-session";
 import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
 import { normalizeUrl } from "@/lib/url";
-import { cn } from "@/lib/utils";
 
 export function BrowserStart({
   sessions,
@@ -68,28 +68,16 @@ export function BrowserStart({
           className="h-13 w-full rounded-2xl border bg-card px-4 text-base shadow-sm outline-none focus:border-primary/60 focus:ring-4 focus:ring-primary/15"
         />
         <div className="flex gap-2">
-          <div role="radiogroup" aria-label={t("browser.mode")} className="grid flex-1 grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-            {(
-              [
-                ["mobile", Smartphone, t("browser.mobile")],
-                ["desktop", Monitor, t("browser.desktop")],
-              ] as const
-            ).map(([m, Icon, label]) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={mode === m}
-                onClick={() => onModeChange(m)}
-                className={cn(
-                  "flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium",
-                  mode === m ? "bg-background shadow-sm" : "text-muted-foreground",
-                )}
-              >
-                <Icon className="size-4" /> {label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            aria-label={t("browser.mode")}
+            className="flex-1"
+            value={mode}
+            onChange={onModeChange}
+            options={[
+              { value: "mobile", label: t("browser.mobile"), icon: Smartphone },
+              { value: "desktop", label: t("browser.desktop"), icon: Monitor },
+            ]}
+          />
           <Button type="submit" size="lg" disabled={!value.trim() || busy} className="rounded-xl px-6">
             {t("common.open")}
           </Button>

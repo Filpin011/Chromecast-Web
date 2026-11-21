@@ -46,7 +46,7 @@ export function AppMenuSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             );
           })}
           <div className="px-1 pt-3">
-            <LanguagePicker />
+            <LanguagePicker size="sm" />
           </div>
         </nav>
       </DrawerContent>

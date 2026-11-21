@@ -168,7 +168,7 @@ describe("NowPlayingContent", () => {
     const remove = vi.spyOn(api.player, "removeFromQueue").mockResolvedValue(makePlayer());
     const player = makePlayer({ queue: [{ id: "q1", input: "a", title: "Prossimo film", thumbnail: null }] });
     renderWithProviders(<NowPlayingContent device={makeDevice()} player={player} receivedAt={Date.now()} />);
-    fireEvent.click(screen.getByRole("button", { name: /Queue/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Queue/ }));
     expect(screen.getByText("Prossimo film")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Remove Prossimo film" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith("dev-1", "q1"));

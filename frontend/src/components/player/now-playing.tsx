@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { SegmentedControl } from "@/components/common/segmented-control";
 import { Button } from "@/components/ui/button";
 import { isActivePlayback } from "@/hooks/use-app-state";
 import { useCommand } from "@/hooks/use-command";
@@ -137,22 +138,20 @@ export function NowPlayingContent({ device, player, receivedAt, onClose }: NowPl
         {!player.tracks.length && <span className="size-11" />}
       </div>
 
-      <div className="mx-auto mt-2 grid w-full max-w-xs grid-cols-2 gap-1 rounded-xl bg-muted p-1 text-sm">
-        {(["player", "queue"] as const).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-pressed={tab === id}
-            className={cn(
-              "flex h-9 items-center justify-center gap-1.5 rounded-lg font-medium transition-all",
-              tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
-            )}
-          >
-            {id === "player" ? t("player.tabPlayer") : <><ListOrdered className="size-4" /> {t("common.queue")} {player.queue.length > 0 && `(${player.queue.length})`}</>}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        kind="tab"
+        className="mx-auto mt-2 w-full max-w-xs"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "player", label: t("player.tabPlayer") },
+          {
+            value: "queue",
+            label: `${t("common.queue")}${player.queue.length > 0 ? ` (${player.queue.length})` : ""}`,
+            icon: ListOrdered,
+          },
+        ]}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
         {tab === "queue" ? (

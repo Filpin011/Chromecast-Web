@@ -3,14 +3,10 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
+import { SegmentedControl, type SegmentSize } from "@/components/common/segmented-control";
 import { useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 
-const OPTIONS = [
-  { value: "light", label: "theme.light", icon: Sun },
-  { value: "dark", label: "theme.dark", icon: Moon },
-  { value: "system", label: "theme.system", icon: Monitor },
-] as const;
+type ThemeValue = "light" | "dark" | "system";
 
 function useMounted() {
   return useSyncExternalStore(
@@ -21,31 +17,22 @@ function useMounted() {
 }
 
 /** Segmented light / dark / system switch. */
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className, size }: { className?: string; size?: SegmentSize }) {
   const t = useT();
   const { theme, setTheme } = useTheme();
   const mounted = useMounted();
   return (
-    <div role="radiogroup" aria-label={t("theme.label")} className={cn("grid grid-cols-3 gap-1 rounded-xl bg-muted p-1", className)}>
-      {OPTIONS.map(({ value, label, icon: Icon }) => {
-        const active = mounted && theme === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => setTheme(value)}
-            className={cn(
-              "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all",
-              active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Icon className="size-4" />
-            <span>{t(label)}</span>
-          </button>
-        );
-      })}
-    </div>
+    <SegmentedControl<ThemeValue>
+      aria-label={t("theme.label")}
+      className={className}
+      size={size}
+      value={mounted ? ((theme as ThemeValue | undefined) ?? null) : null}
+      onChange={setTheme}
+      options={[
+        { value: "light", label: t("theme.light"), icon: Sun },
+        { value: "dark", label: t("theme.dark"), icon: Moon },
+        { value: "system", label: t("theme.system"), icon: Monitor },
+      ]}
+    />
   );
 }
