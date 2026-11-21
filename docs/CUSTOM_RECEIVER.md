@@ -2,7 +2,7 @@
 
 > **Italiano in breve** — Chromecast-Web può usare un "receiver" personalizzato al posto del
 > Default Media Receiver di Google: schermata di caricamento chiara ("Caricamento…",
-> "Connessione lenta…"), messaggio "Flusso interrotto, riconnessione…" invece dello schermo nero,
+> "Connessione lenta…"), messaggio "Stream interrotto, riconnessione…" invece dello schermo nero,
 > overlay con titolo, copertina, badge LIVE e barra di avanzamento, schermata di attesa con orologio,
 > e un buffer più tollerante per le dirette HLS instabili. Richiede una registrazione una tantum
 > (5 US$) nella Google Cast SDK Developer Console e la registrazione del numero di serie del tuo
@@ -19,8 +19,8 @@ plain HTML/CSS/JS, no build step, Google's CAF SDK loaded from `www.gstatic.com`
 | | Default Media Receiver | Custom receiver |
 |---|---|---|
 | Look | Google's | the app's own TV look: the idle image's violet backdrop, the Chromecast Web logo with **animated cast waves**, the app's fonts, colours, status chip and LIVE badge |
-| Loading | small spinner | a ring spinning around the logo, the media title and a "Loading…" / "Caricamento…" chip; after 5 s of buffering it turns amber: "Slow connection, still loading…" / "Connessione lenta, caricamento in corso…" |
-| Playback error | black screen / back to the backdrop | "Stream interrupted, reconnecting…" / "Flusso interrotto, riconnessione…" until the server's next LOAD (the backend re-LOADs live streams after an error; the receiver never reloads on its own). After 60 s without a new LOAD it falls back to the idle screen. |
+| Loading | small spinner | a ring spinning around the logo, the media title and a "Loading…" / "Caricamento…" chip; after 5 s of buffering it turns amber: "Slow connection, still loading…" / "Connessione lenta, sto ancora caricando…" |
+| Playback error | black screen / back to the backdrop | "Stream interrupted, reconnecting…" / "Stream interrotto, riconnessione…" until the server's next LOAD (the backend re-LOADs live streams after an error; the receiver never reloads on its own). After 60 s without a new LOAD it falls back to the idle screen. |
 | Overlay | Google's | logo, title, artwork, LIVE badge for live streams, violet progress bar + times for VOD; shown on start / pause / seek, auto-hidden after 5 s while playing; the app's round play/pause button while paused |
 | Idle | Google's backdrop | the idle image's layout written live (translated) with a clock; a custom idle image (Settings → idle image) is shown full screen with the clock |
 | Flaky live HLS | CAF defaults | larger resume buffer, more segment retries, explicit request timeouts (below) |
