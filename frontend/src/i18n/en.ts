@@ -313,6 +313,8 @@ export const en = {
   "localPlayer.watchHereName": "Watch {name} here",
   "localPlayer.thisDevice": "This device",
   "localPlayer.sendToTv": "Send to TV",
+  "localPlayer.sendingTo": "Sending to {device}…",
+  "localPlayer.castNotStarted": "{device} didn’t start playing. Still playing on this device.",
   "localPlayer.fullscreen": "Full screen",
   "localPlayer.exitFullscreen": "Exit full screen",
   "localPlayer.pip": "Picture in picture",

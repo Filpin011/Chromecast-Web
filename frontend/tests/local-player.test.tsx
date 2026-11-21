@@ -78,7 +78,8 @@ describe("LocalPlayerContent", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Send to TV/ }));
     expect(onCast).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    // it stays open until the Chromecast plays (tests/local-player-cast.test.tsx)
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("shows the error with a retry that reloads the source", async () => {
