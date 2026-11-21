@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Cast, Check, ChevronDown, Loader2, Maximize, PictureInPicture2, Radio, RotateCw, Settings2 } from "lucide-react";
+import { AlertTriangle, Cast, Check, Loader2, Maximize, PictureInPicture2, RotateCw, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MediaOverlay } from "@/components/common/media-overlay";
 import { DevicePickerSheet } from "@/components/devices/device-picker-sheet";
@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useLocalPlayerStore, type LocalMedia, type LocalSource } from "@/stores/local-player-store";
 import { FullscreenControls } from "./local-fullscreen-controls";
 import { LiveBadge } from "./live-badge";
+import { LiveEdgeRow, PlayerSheetHeader } from "./player-chrome";
 import { SkipButton } from "./now-playing";
 import { PlayPauseButton } from "./play-pause-button";
 import { SeekBar } from "./seek-bar";
@@ -205,18 +206,9 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 px-2 pt-2">
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={onClose}>
-            <ChevronDown className="size-6" />
-          </Button>
-        )}
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[0.7rem] font-medium tracking-wider text-muted-foreground uppercase">{t("player.playingOn")}</p>
-          <p className="truncate text-sm font-semibold">{t("localPlayer.thisDevice")}</p>
-        </div>
+      <PlayerSheetHeader target={t("localPlayer.thisDevice")} onClose={onClose}>
         {menus(null)}
-      </div>
+      </PlayerSheetHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
         <div className="mx-auto flex max-w-xl flex-col gap-6">
@@ -289,15 +281,7 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
           {vod ? (
             <SeekBar position={state.time} duration={state.duration} disabled={!ready} onSeek={v.seek} />
           ) : live ? (
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                {behind > 5 ? `-${formatTime(behind)}` : formatTime(state.time)}
-              </span>
-              <Button variant="secondary" size="sm" onClick={v.goLive} disabled={!ready} className="gap-1.5">
-                <Radio className="size-4 text-live" />
-                {t("player.goLive")}
-              </Button>
-            </div>
+            <LiveEdgeRow time={behind > 5 ? `-${formatTime(behind)}` : formatTime(state.time)} onGoLive={v.goLive} disabled={!ready} />
           ) : null}
 
           <div className="flex items-center justify-center gap-1">
