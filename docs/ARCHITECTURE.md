@@ -273,7 +273,8 @@ interface ApiError {
 | POST | `/api/favorites` | `{kind?: FavoriteKind = "media", title, input, source_kind (media only), thumbnail?}` | `Favorite` (201). Upsert: the same `kind` + `input` updates the existing row (no duplicates); a site needs an http(s) URL (else 422) |
 | PATCH | `/api/favorites/{id}` | `{title}` | `Favorite` (rename) |
 | DELETE | `/api/favorites/{id}` | | 204 |
-| GET | `/api/history` | query `limit=50` | `HistoryEntry[]` |
+| GET | `/api/history` | query `limit=50` | `HistoryEntry[]` (one row per `input`: replaying moves that row to the top, same `id`, new `played_at`/`title`/`thumbnail`/`device_id`/`source_kind`; older duplicates are collapsed at startup) |
+| DELETE | `/api/history/{id}` | | 204 (404 `history_not_found`) |
 | DELETE | `/api/history` | | 204 (clear) |
 | GET | `/api/settings` | | `Settings` |
 | PUT | `/api/settings` | `Partial<Settings>` | `Settings` (`idle_image_url` / `public_base_url` must be absolute http(s) URLs, else 422; empty = unset) |
@@ -288,7 +289,7 @@ therefore enables "Previous" whenever something is playing (labelled as previous
 Errors: non-2xx with `ApiError`. Codes include `device_not_found`, `not_connected`,
 `resolve_failed`, `unsupported_source`, `local_disabled`, `playlist_not_found`
 (backend also uses: `validation_error` 422, `cast_error` 502, `queue_empty` 409, `queue_item_not_found`,
-`not_manual` 400, `favorite_not_found`, `not_a_site` 400, `no_source_url` 400, `forbidden_path` 403, `token_not_found`,
+`not_manual` 400, `favorite_not_found`, `history_not_found`, `not_a_site` 400, `no_source_url` 400, `forbidden_path` 403, `token_not_found`,
 `restream_failed` 502, `session_not_found`, `stream_not_found`, `browser_limit` 429 (params `{max}`), `browser_disabled` 503,
 `browser_unavailable` 503, `browser_error` 502, `popup_not_found` 404, `internal_error` 500). The frontend adds
 `network_error` for a server it can't reach.
@@ -455,8 +456,17 @@ type ServerMessage =
   | { type: "state"; data: AppState }                       // full snapshot: on connect and after every change
   | { type: "toast"; level: "info" | "success" | "error"; message: string;   // English fallback text
       code?: string; params?: Record<string, string | number> }               // translate by code when known
+  | { type: "invalidate"; keys: ("settings" | "favorites" | "history" | "playlists")[] }  // cached non-AppState data changed: refetch
   | { type: "pong" };
 ```
+
+**Live sync of non-AppState data**: after every successful change of settings, favorites (create/upsert/rename/delete,
+browser stream/site favorites included), history (recorded on play, single delete, clear) or playlists
+(import/refresh/delete), from any client or the server itself, every `/ws` client gets an `invalidate` naming what
+changed (hooked in the database layer, so every path is covered; failed mutations send nothing). Bursts are coalesced:
+a key is sent at once, further changes within 250 ms once at the end of that window. Clients refetch the matching
+queries (`playlists` also covers each playlist and its channel pages), refetch all four after a reconnect, and ignore
+unknown message types and keys. Measured: a favorite added on one device shows on another in ~40 ms.
 
 Toast codes (always sent with `params`, possibly `{}`):
 - `cast_error` {detail} — driver/receiver error (detail is technical English);
