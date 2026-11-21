@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,7 +90,10 @@ class ManualDeviceRow(SQLModel, table=True):
 
 
 class Database:
-    def __init__(self, path: Path | None) -> None:
+    def __init__(self, path: Path | None, on_change: Callable[[str], None] | None = None) -> None:
+        # Called with "settings" / "favorites" / "history" / "playlists" after every committed change
+        # (the StateHub broadcasts it as an ``invalidate`` so other clients refetch).
+        self.on_change = on_change
         if path is None:
             self.engine = create_engine(
                 "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -119,6 +122,14 @@ class Database:
                 for name, typ in cols.items():
                     if name not in have:
                         conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+            # one history row per input (older versions stacked a row per replay): keep the latest
+            conn.exec_driver_sql(
+                "DELETE FROM history WHERE rowid NOT IN (SELECT MAX(rowid) FROM history GROUP BY input)"
+            )
+
+    def _changed(self, key: str) -> None:
+        if self.on_change is not None:
+            self.on_change(key)
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -156,6 +167,7 @@ class Database:
                     s.add(row)
             s.commit()
         self._settings_cache = None
+        self._changed("settings")
         return new
 
     # ------------------------------------------------------------ favorites
@@ -196,6 +208,7 @@ class Database:
             s.add(row)
             s.commit()
             s.refresh(row)
+        self._changed("favorites")
         return self._fav(row)
 
     def rename_favorite(self, fav_id: str, title: str) -> m.Favorite | None:
@@ -207,6 +220,7 @@ class Database:
             s.add(row)
             s.commit()
             s.refresh(row)
+        self._changed("favorites")
         return self._fav(row)
 
     def delete_favorite(self, fav_id: str) -> bool:
@@ -216,6 +230,7 @@ class Database:
                 return False
             s.delete(row)
             s.commit()
+        self._changed("favorites")
         return True
 
     # ------------------------------------------------------------ history
@@ -227,13 +242,29 @@ class Database:
         thumbnail: str | None,
         device_id: str | None,
     ) -> m.HistoryEntry:
-        row = HistoryRow(
-            title=title, input=input, source_kind=source_kind, thumbnail=thumbnail, device_id=device_id
-        )
+        """Record a play. One row per ``input``: replaying moves the existing row to the top with the new
+        played_at / title / thumbnail / device instead of stacking a duplicate."""
         with self.session() as s:
+            rows = s.exec(
+                select(HistoryRow).where(HistoryRow.input == input).order_by(col(HistoryRow.played_at).desc())
+            ).all()
+            if rows:
+                row = rows[0]
+                for extra in rows[1:]:
+                    s.delete(extra)
+                row.title = title
+                row.source_kind = source_kind
+                row.thumbnail = thumbnail
+                row.device_id = device_id
+                row.played_at = _now()
+            else:
+                row = HistoryRow(
+                    title=title, input=input, source_kind=source_kind, thumbnail=thumbnail, device_id=device_id
+                )
             s.add(row)
             s.commit()
             s.refresh(row)
+        self._changed("history")
         return self._hist(row)
 
     @staticmethod
@@ -255,10 +286,21 @@ class Database:
             ).all()
         return [self._hist(r) for r in rows]
 
+    def delete_history(self, entry_id: str) -> bool:
+        with self.session() as s:
+            row = s.get(HistoryRow, entry_id)
+            if not row:
+                return False
+            s.delete(row)
+            s.commit()
+        self._changed("history")
+        return True
+
     def clear_history(self) -> None:
         with self.session() as s:
             s.exec(delete(HistoryRow))  # type: ignore[call-overload]
             s.commit()
+        self._changed("history")
 
     # ------------------------------------------------------------ playlists
     def _playlist(self, s: Session, row: PlaylistRow) -> m.Playlist:
@@ -300,7 +342,9 @@ class Database:
             self._insert_channels(s, row.id, channels)
             s.commit()
             s.refresh(row)
-            return self._playlist(s, row)
+            result = self._playlist(s, row)
+        self._changed("playlists")
+        return result
 
     def replace_channels(self, playlist_id: str, channels: Iterable[m.Channel]) -> m.Playlist | None:
         with self.session() as s:
@@ -313,7 +357,9 @@ class Database:
             s.add(row)
             s.commit()
             s.refresh(row)
-            return self._playlist(s, row)
+            result = self._playlist(s, row)
+        self._changed("playlists")
+        return result
 
     @staticmethod
     def _insert_channels(s: Session, playlist_id: str, channels: Iterable[m.Channel]) -> None:
@@ -339,6 +385,7 @@ class Database:
             s.exec(delete(ChannelRow).where(ChannelRow.playlist_id == playlist_id))  # type: ignore[call-overload]
             s.delete(row)
             s.commit()
+        self._changed("playlists")
         return True
 
     def list_channels(

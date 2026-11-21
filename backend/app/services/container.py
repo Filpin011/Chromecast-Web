@@ -90,6 +90,7 @@ def build_services(
 ) -> Services:
     db = Database(None if in_memory_db else config.db_path)
     hub = StateHub(tick_interval=config.tick_interval)
+    db.on_change = hub.invalidate  # settings / favorites / history / playlists → `invalidate` on /ws
     http = http_client or httpx.AsyncClient(
         headers={"User-Agent": net.DESKTOP_UA},
         timeout=httpx.Timeout(15.0, connect=10.0),

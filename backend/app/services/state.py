@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from app.models import AppState, Device, PlayerState, utcnow
@@ -13,10 +14,13 @@ from app.models import AppState, Device, PlayerState, utcnow
 log = logging.getLogger(__name__)
 
 QUEUE_MAX = 64
+# Non-AppState data the clients cache (TanStack Query keys); see ``StateHub.invalidate``.
+INVALIDATE_KEYS = frozenset({"settings", "favorites", "history", "playlists"})
+INVALIDATE_WINDOW = 0.25
 
 
 class StateHub:
-    def __init__(self, tick_interval: float = 1.0) -> None:
+    def __init__(self, tick_interval: float = 1.0, invalidate_window: float = INVALIDATE_WINDOW) -> None:
         self.devices: list[Device] = []
         self.active_device_id: str | None = None
         self.players: dict[str, PlayerState] = {}
@@ -26,9 +30,16 @@ class StateHub:
         self._clients: set[asyncio.Queue[dict[str, Any]]] = set()
         self._tick_task: asyncio.Task[None] | None = None
         self._listeners: list[Callable[[AppState], None]] = []
+        self.invalidate_window = invalidate_window
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._inv_last: dict[str, float] = {}
+        self._inv_pending: set[str] = set()
+        self._inv_timer: asyncio.TimerHandle | None = None
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
+        with contextlib.suppress(RuntimeError):
+            self._loop = asyncio.get_running_loop()
         if self._tick_task is None and self.tick_interval > 0:
             self._tick_task = asyncio.create_task(self._tick_loop(), name="statehub-tick")
 
@@ -38,6 +49,10 @@ class StateHub:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._tick_task
             self._tick_task = None
+        if self._inv_timer is not None:
+            self._inv_timer.cancel()
+            self._inv_timer = None
+        self._inv_pending.clear()
         for q in list(self._clients):
             self._put(q, {"type": "closed"})
 
@@ -120,6 +135,62 @@ class StateHub:
         if code:
             msg["code"] = code
             msg["params"] = params or {}
+        for q in list(self._clients):
+            self._put(q, msg)
+
+    def invalidate(self, *keys: str) -> None:
+        """Tell every client that cached non-AppState data changed: ``{"type": "invalidate", "keys": [...]}``.
+
+        Keys are ``settings`` / ``favorites`` / ``history`` / ``playlists``. Bursts are coalesced: a key is
+        sent at once if it wasn't sent in the last ``invalidate_window`` seconds, otherwise once more at the
+        end of that window, so one key goes out at most once per window. Safe to call from any thread.
+        """
+        wanted = [k for k in keys if k in INVALIDATE_KEYS]
+        if not wanted:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is None:
+            if self._loop is not None and not self._loop.is_closed():
+                self._loop.call_soon_threadsafe(self.invalidate, *wanted)
+            return
+        self._loop = loop
+        now = time.monotonic()
+        ready: list[str] = []
+        for k in wanted:
+            if k in self._inv_pending:
+                continue
+            if now - self._inv_last.get(k, float("-inf")) >= self.invalidate_window:
+                ready.append(k)
+                self._inv_last[k] = now
+            else:
+                self._inv_pending.add(k)
+        if ready:
+            self._send_invalidate(ready)
+        self._schedule_invalidate(loop)
+
+    def _schedule_invalidate(self, loop: asyncio.AbstractEventLoop) -> None:
+        if self._inv_timer is not None or not self._inv_pending:
+            return
+        due = min(self._inv_last[k] for k in self._inv_pending) + self.invalidate_window
+        self._inv_timer = loop.call_later(max(0.0, due - time.monotonic()), self._flush_invalidate, loop)
+
+    def _flush_invalidate(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._inv_timer = None
+        now = time.monotonic()
+        # tiny slack: call_later may fire a hair early on coarse clocks
+        ready = sorted(k for k in self._inv_pending if now - self._inv_last[k] >= self.invalidate_window - 0.005)
+        for k in ready:
+            self._inv_pending.discard(k)
+            self._inv_last[k] = now
+        if ready:
+            self._send_invalidate(ready)
+        self._schedule_invalidate(loop)
+
+    def _send_invalidate(self, keys: Iterable[str]) -> None:
+        msg: dict[str, Any] = {"type": "invalidate", "keys": list(keys)}
         for q in list(self._clients):
             self._put(q, msg)
 

@@ -84,6 +84,13 @@ async def history(limit: int = Query(50, ge=1, le=500), s: Services = Depends(se
     return s.db.list_history(limit)
 
 
+@router.delete("/history/{entry_id}", status_code=204)
+async def delete_history_entry(entry_id: str, s: Services = Depends(services)) -> Response:
+    if not s.db.delete_history(entry_id):
+        raise AppError(404, "History entry not found", "history_not_found")
+    return Response(status_code=204)
+
+
 @router.delete("/history", status_code=204)
 async def clear_history(s: Services = Depends(services)) -> Response:
     s.db.clear_history()
