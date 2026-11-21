@@ -150,7 +150,7 @@ export default function CastPage() {
 
         {media.length > 0 && (
           <Section title={t("cast.favorites")} icon={Star} href="/library/?tab=favorites">
-            <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+            <div className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:scroll-px-0 md:px-0">
               {media.slice(0, 12).map((f) => (
                 <button
                   key={f.id}
