@@ -858,6 +858,9 @@ class RemoteBrowserSession:
             await self.stop_media()
             return
         if kind in POINTER_INPUTS:
+            if kind in ("click", "tap", "key", "text"):
+                # the user-gesture window opens when the gesture arrives, not when its turn comes
+                self._last_input = time.monotonic()
             # ordered and off the WebSocket loop: a burst of scrolls can't delay the next frame or tap
             self._inputs.put_nowait(msg)
             return
