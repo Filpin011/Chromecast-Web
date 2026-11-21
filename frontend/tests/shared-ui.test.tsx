@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Star } from "lucide-react";
+import { AlertTriangle, Star } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
+import { MediaOverlay } from "@/components/common/media-overlay";
 import { SegmentedControl } from "@/components/common/segmented-control";
 
 describe("SegmentedControl", () => {
@@ -32,5 +33,21 @@ describe("SegmentedControl", () => {
       expect(r).toHaveAttribute("aria-checked", "false");
       expect(r).toBeDisabled();
     }
+  });
+});
+
+describe("MediaOverlay", () => {
+  it("shows a message and runs its action", () => {
+    const onClick = vi.fn();
+    render(<MediaOverlay role="alert" tone="solid" size="sm" icon={AlertTriangle} message="Broken" action={{ label: "Retry", onClick }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Broken");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onClick).toHaveBeenCalled();
+  });
+
+  it("lets taps through while only loading", () => {
+    const { container } = render(<MediaOverlay spinner />);
+    expect(container.firstElementChild).toHaveClass("pointer-events-none");
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

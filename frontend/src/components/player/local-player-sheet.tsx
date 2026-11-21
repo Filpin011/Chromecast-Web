@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Cast, Check, ChevronDown, Loader2, Maximize, PictureInPicture2, Radio, RotateCw, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MediaOverlay } from "@/components/common/media-overlay";
 import { DevicePickerSheet } from "@/components/devices/device-picker-sheet";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
@@ -262,25 +263,16 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
                 onCast={sendToTv}
               />
             )}
-            {!failed && (state.status === "loading" || (state.buffering && !state.paused)) && (
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <Loader2 className="size-8 animate-spin text-white/80" />
-              </div>
-            )}
+            {!failed && (state.status === "loading" || (state.buffering && !state.paused)) && <MediaOverlay spinner size="sm" />}
             {failed && (
-              <div role="alert" className="absolute inset-0 grid place-items-center bg-black p-4 text-center text-xs text-white/80">
-                <div className="flex flex-col items-center gap-2">
-                  <AlertTriangle className="size-5" />
-                  {sourceError ? errorMessage(sourceError, t("localPlayer.error")) : t("localPlayer.error")}
-                  <button
-                    type="button"
-                    onClick={() => setAttempt((n) => n + 1)}
-                    className="mt-1 inline-flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-4 text-xs font-medium text-white active:bg-white/25"
-                  >
-                    <RotateCw className="size-3.5" /> {t("common.retry")}
-                  </button>
-                </div>
-              </div>
+              <MediaOverlay
+                role="alert"
+                tone="solid"
+                size="sm"
+                icon={AlertTriangle}
+                message={sourceError ? errorMessage(sourceError, t("localPlayer.error")) : t("localPlayer.error")}
+                action={{ label: t("common.retry"), icon: RotateCw, onClick: () => setAttempt((n) => n + 1) }}
+              />
             )}
           </div>
 

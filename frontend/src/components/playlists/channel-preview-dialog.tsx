@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Cast, ListPlus, Loader2 } from "lucide-react";
+import { Cast, ListPlus } from "lucide-react";
+import { MediaBox, MediaOverlay } from "@/components/common/media-overlay";
 import { VideoPreview } from "@/components/media/video-preview";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,13 +50,16 @@ export function ChannelPreviewDialog({
         {media?.preview_url ? (
           <VideoPreview src={media.preview_url} mimeType={media.mime_type} poster={channel?.logo} controls />
         ) : q.isError || (q.isSuccess && !media?.preview_url) ? (
-          <div className="grid aspect-video place-items-center rounded-xl bg-black p-4 text-center text-xs text-white/80">
-            {q.isError ? errorMessage(q.error, t("channels.previewUnavailable")) : t("channels.previewUnavailableChannel")}
-          </div>
+          <MediaBox>
+            <MediaOverlay
+              size="sm"
+              message={q.isError ? errorMessage(q.error, t("channels.previewUnavailable")) : t("channels.previewUnavailableChannel")}
+            />
+          </MediaBox>
         ) : (
-          <div className="grid aspect-video place-items-center rounded-xl bg-black">
-            <Loader2 className="size-7 animate-spin text-white/70" />
-          </div>
+          <MediaBox>
+            <MediaOverlay spinner size="sm" />
+          </MediaBox>
         )}
         {channel && (
           <DialogFooter className="grid grid-cols-[1fr_auto] gap-2 sm:flex">
