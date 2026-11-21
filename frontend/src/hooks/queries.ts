@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import type { FavoriteCreate, PlaylistImportRequest, Settings } from "@/lib/api/types";
 import { currentTranslator, t } from "@/i18n";
+import { siteFavoriteFor } from "@/lib/favorites";
 import { errorMessage, qk } from "@/lib/query";
 
 export function useHealth() {
@@ -92,6 +93,42 @@ export function useRemoveFavorite() {
     },
     onSettled: () => qc.invalidateQueries({ queryKey: qk.favorites }),
   });
+}
+
+export function useRenameFavorite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.favorites.rename(id, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.favorites });
+      toast.success(t("toast.favoriteRenamed"));
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+}
+
+/**
+ * Star of the remote browser: whether the session's current page is a site favorite, and a toggle that
+ * saves it (title, URL and icon come from the session server-side) or removes the saved one.
+ */
+export function useSiteFavorite(sessionId: string, url: string) {
+  const qc = useQueryClient();
+  const favorites = useFavorites();
+  const saved = siteFavoriteFor(favorites.data, url);
+  const toggle = useMutation({
+    mutationFn: async (): Promise<"added" | "removed"> => {
+      if (saved) {
+        await api.favorites.remove(saved.id);
+        return "removed";
+      }
+      await api.browser.favoriteSite(sessionId);
+      return "added";
+    },
+    onSuccess: (result) => toast.success(t(result === "added" ? "toast.siteAdded" : "toast.siteRemoved")),
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.favorites }),
+  });
+  return { saved: !!saved, toggle: () => toggle.mutate(), busy: toggle.isPending };
 }
 
 export function useHistory(limit = 50) {

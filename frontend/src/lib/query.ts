@@ -49,6 +49,7 @@ export const ERROR_CODES = [
   "queue_item_not_found",
   "not_manual",
   "favorite_not_found",
+  "not_a_site",
   "no_source_url",
   "forbidden_path",
   "token_not_found",

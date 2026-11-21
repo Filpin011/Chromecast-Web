@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SourceKind = Literal["direct", "webpage", "m3u", "ytdlp", "local"]
+# "media": something to cast; "site": a web page to reopen in the remote browser
+FavoriteKind = Literal["media", "site"]
 StreamType = Literal["LIVE", "BUFFERED"]
 PlayerStateName = Literal["IDLE", "PLAYING", "PAUSED", "BUFFERING", "UNKNOWN"]
 StreamKind = Literal["hls", "dash", "progressive", "unknown"]
@@ -115,6 +117,7 @@ ResolveResult = Annotated[MediaResult | PlaylistResult, Field(discriminator="typ
 
 class Favorite(Model):
     id: str
+    kind: FavoriteKind = "media"
     title: str
     input: str
     source_kind: SourceKind
@@ -268,10 +271,43 @@ class ChannelPage(Model):
 
 
 class FavoriteIn(Model):
+    kind: FavoriteKind = "media"
     title: str
     input: str
-    source_kind: SourceKind
+    # required for media; a site is always "webpage"
+    source_kind: SourceKind | None = None
     thumbnail: str | None = None
+
+    @field_validator("title", "input")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        return v.strip()
+
+    @model_validator(mode="after")
+    def _check(self) -> FavoriteIn:
+        if self.kind == "site":
+            if not self.input.lower().startswith(("http://", "https://")):
+                raise ValueError("a site favorite needs an http(s) URL")
+            self.source_kind = "webpage"
+        elif self.source_kind is None:
+            raise ValueError("source_kind is required for a media favorite")
+        if not self.input:
+            raise ValueError("input must not be empty")
+        if not self.title:
+            self.title = self.input
+        return self
+
+
+class FavoriteRename(Model):
+    title: str = Field(min_length=1)
+
+    @field_validator("title")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("title must not be empty")
+        return v
 
 
 class LocalEntry(Model):

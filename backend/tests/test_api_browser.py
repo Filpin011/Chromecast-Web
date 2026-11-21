@@ -132,3 +132,19 @@ def test_clear_captured_endpoint(client):
     r = client.post(f"/api/browser/sessions/{sid}/cast", json={"stream_id": stale, "device_id": "fake-ultra-0001"})
     assert r.status_code == 404 and r.json()["code"] == "stream_not_found"
     assert client.delete("/api/browser/sessions/nope/captured").json()["code"] == "session_not_found"
+
+
+def test_favorite_site_toggles_the_current_page(client):
+    sid, _ = create(client)
+    r = client.post(f"/api/browser/sessions/{sid}/favorite-site")
+    assert r.status_code == 201
+    fav = r.json()
+    assert fav["kind"] == "site" and fav["input"] == PAGE and fav["title"] == "Canale Live"
+    assert fav["source_kind"] == "webpage" and fav["thumbnail"] == "https://tv.example.com/favicon.ico"
+    # the page's declared icon wins over /favicon.ico; saving again updates, never duplicates
+    session = client.app.state.services.browser.get(sid)
+    session.page.main_frame.evaluate_result = "https://tv.example.com/icon-192.png"
+    again = client.post(f"/api/browser/sessions/{sid}/favorite-site").json()
+    assert again["id"] == fav["id"] and again["thumbnail"] == "https://tv.example.com/icon-192.png"
+    assert [f["id"] for f in client.get("/api/favorites").json()] == [fav["id"]]
+    assert client.post("/api/browser/sessions/nope/favorite-site").json()["code"] == "session_not_found"

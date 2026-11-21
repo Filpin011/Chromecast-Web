@@ -1,6 +1,6 @@
 "use client";
 
-import { ListPlus, MoreVertical, Play, Star, Trash2 } from "lucide-react";
+import { ListPlus, MoreVertical, Pencil, Play, Star, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Thumb } from "@/components/common/thumb";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,15 @@ export interface MediaRowProps {
   onCast: () => void;
   onQueue?: () => void;
   onFavorite?: () => void;
+  onRename?: () => void;
   onDelete?: () => void;
   disabled?: boolean;
 }
 
 /** Tappable list row (tap = cast) with an overflow menu for secondary actions. */
-export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onDelete, disabled }: MediaRowProps) {
+export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onRename, onDelete, disabled }: MediaRowProps) {
   const t = useT();
-  const hasMenu = onQueue || onFavorite || onDelete;
+  const hasMenu = onQueue || onFavorite || onRename || onDelete;
   return (
     <div className="flex items-center gap-1 rounded-xl transition-colors hover:bg-muted/50">
       <button
@@ -61,6 +62,11 @@ export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavori
             {onFavorite && (
               <DropdownMenuItem onClick={onFavorite}>
                 <Star className="size-4" /> {t("media.addToFavorites")}
+              </DropdownMenuItem>
+            )}
+            {onRename && (
+              <DropdownMenuItem onClick={onRename}>
+                <Pencil className="size-4" /> {t("favorites.rename")}
               </DropdownMenuItem>
             )}
             {onDelete && (

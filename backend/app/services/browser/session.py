@@ -48,6 +48,19 @@ STOP_MEDIA_JS = """
 () => { for (const m of document.querySelectorAll('video, audio')) { try { m.pause(); m.muted = true; } catch (e) {} } }
 """
 
+# the page's declared icon (largest apple-touch-icon / icon link), absolute; null when none
+FAVICON_JS = """
+() => {
+  let best = null, size = -1;
+  for (const l of document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')) {
+    if (!l.href || l.href.startsWith('data:') && l.href.length > 20000) continue;
+    const s = parseInt((l.sizes && l.sizes.value || '').split('x')[0], 10) || (l.rel.includes('apple') ? 180 : 16);
+    if (s > size && s <= 256) { size = s; best = l.href; }
+  }
+  return best;
+}
+"""
+
 LARGEST_VIDEO_JS = """
 () => {
   let best = null, area = 0;
@@ -695,6 +708,18 @@ class RemoteBrowserSession:
             self._own_pages.discard(old)
             with contextlib.suppress(Exception):
                 await old.close()
+
+    async def favicon(self) -> str | None:
+        """Icon of the current page (for a site favorite): the declared one, else /favicon.ico."""
+        icon = None
+        with contextlib.suppress(Exception):
+            found = await asyncio.wait_for(self.page.evaluate(FAVICON_JS), 2)
+            if isinstance(found, str) and found.startswith(("http://", "https://", "data:image/")):
+                icon = found
+        if icon is None and self.url.lower().startswith(("http://", "https://")):
+            parts = urlsplit(self.url)
+            icon = f"{parts.scheme}://{parts.netloc}/favicon.ico"
+        return icon
 
     async def stop_media(self) -> None:
         """Pause/mute every <video>/<audio> in every frame of the visible page."""

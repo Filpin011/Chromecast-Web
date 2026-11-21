@@ -2,8 +2,11 @@
 
 import { Compass, Monitor, Smartphone, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { SiteTiles } from "@/components/favorites/site-tiles";
 import { Button } from "@/components/ui/button";
+import { useFavorites } from "@/hooks/queries";
 import type { BrowserSession } from "@/lib/api/types";
+import { siteFavorites } from "@/lib/favorites";
 import type { ViewportMode } from "@/lib/browser-session";
 import { useT } from "@/i18n";
 import { hostOf } from "@/lib/format";
@@ -32,6 +35,8 @@ export function BrowserStart({
 }) {
   const t = useT();
   const [value, setValue] = useState("");
+  const favorites = useFavorites();
+  const sites = siteFavorites(favorites.data);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const u = normalizeUrl(value);
@@ -90,6 +95,12 @@ export function BrowserStart({
           </Button>
         </div>
       </form>
+      {sites.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-sm font-semibold text-muted-foreground">{t("sites.title")}</h2>
+          <SiteTiles sites={sites} onOpen={(url) => !busy && onOpen(url)} />
+        </section>
+      )}
       {sessions.length > 0 && (
         <section className="space-y-2">
           <h2 className="px-1 text-sm font-semibold text-muted-foreground">{t("browser.openSessions")}</h2>

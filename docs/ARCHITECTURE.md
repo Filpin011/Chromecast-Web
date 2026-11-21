@@ -174,7 +174,11 @@ type ResolveResult =
   | { type: "media"; media: ResolvedMedia }
   | { type: "playlist"; name: string; channels: Channel[] };   // un-saved preview of an M3U
 
-interface Favorite { id: string; title: string; input: string; source_kind: SourceKind; thumbnail: string | null; created_at: string }
+type FavoriteKind = "media" | "site";
+// kind "media": something to cast (tap = cast `input`). kind "site": a web page bookmark, `input` = the page URL,
+// `source_kind` always "webpage", `thumbnail` = the site's icon URL (or null); tap = reopen it in the remote
+// browser (`/browser/?url=<input>`), never a cast. Rows saved before sites existed are "media".
+interface Favorite { id: string; kind: FavoriteKind; title: string; input: string; source_kind: SourceKind; thumbnail: string | null; created_at: string }
 interface HistoryEntry { id: string; title: string; input: string; source_kind: SourceKind; thumbnail: string | null; device_id: string | null; played_at: string }
 
 interface MediaTrack { id: number; type: "TEXT" | "AUDIO" | "VIDEO"; name: string | null; language: string | null }
@@ -262,7 +266,8 @@ interface ApiError {
 | POST | `/api/playlists/{id}/refresh` | | `Playlist` |
 | DELETE | `/api/playlists/{id}` | | 204 |
 | GET | `/api/favorites` | | `Favorite[]` |
-| POST | `/api/favorites` | `{title, input, source_kind, thumbnail?}` | `Favorite` |
+| POST | `/api/favorites` | `{kind?: FavoriteKind = "media", title, input, source_kind (media only), thumbnail?}` | `Favorite` (201). Upsert: the same `kind` + `input` updates the existing row (no duplicates); a site needs an http(s) URL (else 422) |
+| PATCH | `/api/favorites/{id}` | `{title}` | `Favorite` (rename) |
 | DELETE | `/api/favorites/{id}` | | 204 |
 | GET | `/api/history` | query `limit=50` | `HistoryEntry[]` |
 | DELETE | `/api/history` | | 204 (clear) |
@@ -279,7 +284,7 @@ therefore enables "Previous" whenever something is playing (labelled as previous
 Errors: non-2xx with `ApiError`. Codes include `device_not_found`, `not_connected`,
 `resolve_failed`, `unsupported_source`, `local_disabled`, `playlist_not_found`
 (backend also uses: `validation_error` 422, `cast_error` 502, `queue_empty` 409, `queue_item_not_found`,
-`not_manual` 400, `favorite_not_found`, `no_source_url` 400, `forbidden_path` 403, `token_not_found`,
+`not_manual` 400, `favorite_not_found`, `not_a_site` 400, `no_source_url` 400, `forbidden_path` 403, `token_not_found`,
 `restream_failed` 502, `session_not_found`, `stream_not_found`, `browser_limit` 429 (params `{max}`), `browser_disabled` 503,
 `browser_unavailable` 503, `browser_error` 502, `popup_not_found` 404, `internal_error` 500). The frontend adds
 `network_error` for a server it can't reach.
@@ -586,6 +591,12 @@ Contract additions (optional/nullable fields, backward compatible) on `CapturedS
 
 `POST /api/browser/sessions/{id}/cast` also accepts `{stream_id, device_id, enqueue?: boolean}`;
 `POST /api/browser/sessions/{id}/favorite` `{stream_id}` → `Favorite`.
+`POST /api/browser/sessions/{id}/favorite-site` (no body) → `Favorite` of kind `"site"` for the page the session
+shows: title = page title (else host), `input` = page URL, `thumbnail` = the page's declared icon (largest
+`<link rel=icon|apple-touch-icon>` up to 256 px) else `<origin>/favicon.ico`. Upsert like `POST /api/favorites`;
+400 `not_a_site` for a non-http(s) page (e.g. `about:blank`). The browser's URL pill shows a **star** for the
+current page: filled when a site favorite with that exact URL exists, tapping it then removes that favorite
+(`DELETE /api/favorites/{id}`). Saved sites are listed in Library › *Sites*, on Home and on the browser start screen.
 
 ## Ad blocking, popup control, quick close (HARD REQUIREMENT — added by the user, reviewers must enforce)
 

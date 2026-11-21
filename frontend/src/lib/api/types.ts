@@ -71,8 +71,12 @@ export type ResolveResult =
   | { type: "media"; media: ResolvedMedia }
   | { type: "playlist"; name: string; channels: Channel[] };
 
+/** "media": something to cast. "site": a web page to reopen in the remote browser. */
+export type FavoriteKind = "media" | "site";
+
 export interface Favorite {
   id: string;
+  kind: FavoriteKind;
   title: string;
   input: string;
   source_kind: SourceKind;
@@ -232,12 +236,10 @@ export interface PlaylistImportRequest {
   name?: string;
 }
 
-export interface FavoriteCreate {
-  title: string;
-  input: string;
-  source_kind: SourceKind;
-  thumbnail?: string | null;
-}
+export type FavoriteCreate =
+  | { kind?: "media"; title: string; input: string; source_kind: SourceKind; thumbnail?: string | null }
+  /** A web page (http/https) to reopen in the remote browser; the server stores it as "webpage". */
+  | { kind: "site"; title: string; input: string; thumbnail?: string | null };
 
 export interface ChannelQuery {
   q?: string;

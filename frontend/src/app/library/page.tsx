@@ -1,12 +1,14 @@
 "use client";
 
-import { ChevronRight, Clock, FolderOpen, Star, Trash2 } from "lucide-react";
+import { ChevronRight, Clock, FolderOpen, Globe, Star, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageBody, PageHeader } from "@/components/common/page-header";
+import { RenameFavoriteDialog } from "@/components/favorites/rename-dialog";
 import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
+import { SiteRow } from "@/components/library/site-row";
 import { Button } from "@/components/ui/button";
 import {
   useAddFavorite,
@@ -19,17 +21,23 @@ import {
 import { useDevices } from "@/hooks/use-app-state";
 import { useCast } from "@/hooks/use-cast";
 import { useT } from "@/i18n";
+import type { Favorite } from "@/lib/api/types";
+import { browserHref, mediaFavorites, siteFavorites } from "@/lib/favorites";
 import { formatRelative, SOURCE_LABEL_KEY } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type Tab = "favorites" | "history";
+type Tab = "favorites" | "sites" | "history";
+const TABS: readonly Tab[] = ["favorites", "sites", "history"];
 
 function LibraryInner() {
   const t = useT();
   const params = useSearchParams();
   const router = useRouter();
-  const tab: Tab = params.get("tab") === "history" ? "history" : "favorites";
+  const tab: Tab = TABS.find((x) => x === params.get("tab")) ?? "favorites";
   const favorites = useFavorites();
+  const media = useMemo(() => mediaFavorites(favorites.data), [favorites.data]);
+  const sites = useMemo(() => siteFavorites(favorites.data), [favorites.data]);
+  const [renaming, setRenaming] = useState<Favorite | null>(null);
   const history = useHistory(100);
   const removeFav = useRemoveFavorite();
   const addFav = useAddFavorite();
@@ -41,7 +49,7 @@ function LibraryInner() {
   const deviceName = (id: string | null) => (id ? names.get(id) : undefined);
 
   const setTab = (next: Tab) => router.replace(`/library/?tab=${next}`, { scroll: false });
-  const list = tab === "favorites" ? favorites : history;
+  const list = tab === "history" ? history : favorites;
 
   return (
     <>
@@ -70,10 +78,11 @@ function LibraryInner() {
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
         )}
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist">
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1" role="tablist">
           {(
             [
-              ["favorites", Star, t("library.favorites"), favorites.data?.length],
+              ["favorites", Star, t("library.favorites"), media.length],
+              ["sites", Globe, t("library.sites"), sites.length],
               ["history", Clock, t("library.history"), history.data?.length],
             ] as const
           ).map(([id, Icon, label, count]) => (
@@ -84,11 +93,11 @@ function LibraryInner() {
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               className={cn(
-                "flex h-10 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-all",
+                "flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 text-sm font-medium transition-all",
                 tab === id ? "bg-background shadow-sm" : "text-muted-foreground",
               )}
             >
-              <Icon className="size-4" /> {label}
+              <Icon className="size-4 shrink-0" /> <span className="truncate">{label}</span>
               {count ? <span className="text-xs text-muted-foreground tabular-nums">{count}</span> : null}
             </button>
           ))}
@@ -97,9 +106,23 @@ function LibraryInner() {
         <div className="rounded-2xl border bg-card p-1">
           {list.isLoading ? (
             Array.from({ length: 5 }, (_, i) => <MediaRowSkeleton key={i} />)
+          ) : tab === "sites" ? (
+            sites.length ? (
+              sites.map((f) => (
+                <SiteRow
+                  key={f.id}
+                  site={f}
+                  onOpen={() => router.push(browserHref(f.input))}
+                  onRename={() => setRenaming(f)}
+                  onDelete={() => removeFav.mutate(f.id)}
+                />
+              ))
+            ) : (
+              <EmptyState icon={Globe} title={t("library.noSites")} description={t("library.noSitesHint")} />
+            )
           ) : tab === "favorites" ? (
-            favorites.data?.length ? (
-              favorites.data.map((f) => (
+            media.length ? (
+              media.map((f) => (
                 <MediaRow
                   key={f.id}
                   title={f.title}
@@ -108,6 +131,7 @@ function LibraryInner() {
                   disabled={busy}
                   onCast={() => cast({ input: f.input, kind: f.source_kind, title: f.title })}
                   onQueue={() => cast({ input: f.input, kind: f.source_kind, title: f.title, enqueue: true })}
+                  onRename={() => setRenaming(f)}
                   onDelete={() => removeFav.mutate(f.id)}
                 />
               ))
@@ -132,6 +156,7 @@ function LibraryInner() {
           )}
         </div>
       </PageBody>
+      <RenameFavoriteDialog favorite={renaming} onClose={() => setRenaming(null)} />
     </>
   );
 }

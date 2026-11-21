@@ -63,6 +63,14 @@ async def add_favorite(body: m.FavoriteIn, s: Services = Depends(services)) -> m
     return s.db.add_favorite(body)
 
 
+@router.patch("/favorites/{fav_id}", response_model=m.Favorite)
+async def rename_favorite(fav_id: str, body: m.FavoriteRename, s: Services = Depends(services)) -> m.Favorite:
+    fav = s.db.rename_favorite(fav_id, body.title)
+    if fav is None:
+        raise AppError(404, "Favorite not found", "favorite_not_found")
+    return fav
+
+
 @router.delete("/favorites/{fav_id}", status_code=204)
 async def delete_favorite(fav_id: str, s: Services = Depends(services)) -> Response:
     if not s.db.delete_favorite(fav_id):
