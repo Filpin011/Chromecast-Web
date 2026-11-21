@@ -10,6 +10,7 @@ import { haptic } from "@/lib/haptics";
 import { t } from "@/i18n";
 import { errorMessage, qk } from "@/lib/query";
 import { selectActiveDevice, useAppStore } from "@/stores/app-store";
+import { useLocalPlayerStore } from "@/stores/local-player-store";
 import { useUiStore } from "@/stores/ui-store";
 
 export interface CastRequest {
@@ -71,9 +72,13 @@ export function useCast() {
       // optimistic loading indicator until the first PLAYING (an enqueue may not play at all)
       const store = useAppStore.getState();
       if (!enqueue) store.startPendingLoad(deviceId);
-      const id = toast.loading(enqueue ? t("cast.adding") : t("cast.starting", { device: deviceName(deviceId) }), {
-        description: label,
-      });
+      // the built-in player shows its own inline "Sending to…" status: no loading toast on top of it
+      const fromLocalPlayer = !enqueue && useLocalPlayerStore.getState().media != null;
+      const id = fromLocalPlayer
+        ? undefined
+        : toast.loading(enqueue ? t("cast.adding") : t("cast.starting", { device: deviceName(deviceId) }), {
+            description: label,
+          });
       try {
         const p = await fn(deviceId);
         useAppStore.getState().applyPlayer(p);

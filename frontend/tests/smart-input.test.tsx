@@ -36,7 +36,7 @@ describe("SmartInput", () => {
     expect(screen.getByTestId("input-kind")).toHaveTextContent("Direct stream");
     fireEvent.change(box, { target: { value: "boh" } });
     expect(screen.getByTestId("input-kind")).toHaveTextContent("Not recognised");
-    expect(screen.getByRole("button", { name: "Analyse" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Analyze" })).toBeDisabled();
   });
 
   it("submits on Enter with the trimmed value", () => {

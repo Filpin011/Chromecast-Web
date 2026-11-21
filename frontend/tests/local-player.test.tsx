@@ -76,7 +76,7 @@ describe("LocalPlayerContent", () => {
     fireEvent.canPlay(el);
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Send to TV/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cast$/ }));
     expect(onCast).toHaveBeenCalledTimes(1);
     // it stays open until the Chromecast plays (tests/local-player-cast.test.tsx)
     expect(onClose).not.toHaveBeenCalled();

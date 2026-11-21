@@ -170,11 +170,14 @@ export function formatRelativeTime(
     relFormats.set(locale, rtf);
   }
   const diff = Math.round((ts - now) / 1000);
-  const abs = Math.abs(diff);
-  if (abs < 60) return rtf.format(diff, "second");
-  if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
-  if (abs < 86400) return rtf.format(Math.round(diff / 3600), "hour");
-  if (abs < 86400 * 30) return rtf.format(Math.round(diff / 86400), "day");
+  // pick the unit from the rounded value, so 59.6 min reads "1 hour ago", not "60 minutes ago"
+  const minutes = Math.round(diff / 60);
+  const hours = Math.round(diff / 3600);
+  const days = Math.round(diff / 86400);
+  if (Math.abs(diff) < 60) return rtf.format(diff, "second");
+  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
+  if (Math.abs(days) < 30) return rtf.format(days, "day");
   return formatDate(ts, { dateStyle: "medium" }, locale);
 }
 

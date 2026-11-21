@@ -46,7 +46,7 @@ export function BrowserStart({
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pt-[calc(env(safe-area-inset-top)+2rem)] pb-chrome">
       <div className="space-y-2 text-center">
-        <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-gradient-to-br from-primary to-indigo-700 text-white shadow-xl shadow-primary/30">
+        <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-brand-gradient text-white shadow-xl shadow-primary/30">
           <Compass className="size-8" />
         </div>
         <h1 className="text-2xl font-bold tracking-tight">{t("nav.browser")}</h1>

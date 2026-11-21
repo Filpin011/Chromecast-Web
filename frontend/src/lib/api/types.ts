@@ -178,6 +178,8 @@ export interface Health {
   status: "ok";
   driver: string;
   version: string;
+  /** MEDIA_ROOT is set: the Files section is available (absent on older backends). */
+  local_enabled?: boolean;
 }
 
 export interface LocalEntry {

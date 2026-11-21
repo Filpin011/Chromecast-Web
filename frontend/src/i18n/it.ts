@@ -311,7 +311,7 @@ export const it: Messages = {
   "localPlayer.watchOnThisDevice": "Guarda su questo dispositivo",
   "localPlayer.watchHereName": "Guarda {name} qui",
   "localPlayer.thisDevice": "Questo dispositivo",
-  "localPlayer.sendToTv": "Invia alla TV",
+  "localPlayer.sendToTv": "Trasmetti",
   "localPlayer.sendingTo": "Invio a {device}…",
   "localPlayer.castNotStarted": "{device} non ha avviato la riproduzione: continua su questo dispositivo.",
   "localPlayer.fullscreen": "Schermo intero",

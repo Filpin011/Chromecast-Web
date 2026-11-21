@@ -46,7 +46,7 @@ function renderApp() {
   );
 }
 
-const sendButton = () => screen.getByRole("button", { name: /Send to TV/ });
+const sendButton = () => screen.getByRole("button", { name: /^Cast$/ });
 const playerOpen = () => useLocalPlayerStore.getState().media !== null;
 
 function snapshot(version: number, player: Parameters<typeof makePlayer>[0]) {
@@ -157,7 +157,8 @@ describe("Send to TV from the local player", () => {
     snapshot(2, { player_state: "IDLE", idle_reason: "ERROR", original_input: MOVIE });
 
     expect(await screen.findByText("Salotto didn’t start playing. Still playing on this device.")).toBeInTheDocument();
-    expect(toast.error).toHaveBeenCalledWith("Salotto didn’t start playing. Still playing on this device.");
+    // the server already toasts playback_failed for an IDLE/ERROR: no second toast from the player
+    expect(toast.error).not.toHaveBeenCalledWith("Salotto didn’t start playing. Still playing on this device.");
     expect(playerOpen()).toBe(true);
     expect(sendButton()).toBeEnabled();
   });

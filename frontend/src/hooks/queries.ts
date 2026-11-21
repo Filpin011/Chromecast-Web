@@ -179,12 +179,17 @@ export function useLocalListing(path: string) {
 
 /** `false` when the backend has no MEDIA_ROOT (404 local_disabled). `undefined` while unknown. */
 export function useLocalAvailable(): boolean | undefined {
+  const health = useHealth();
+  // /api/health says it up front (no 404 in the console on every page load); older backends: probe /api/local
+  const known = typeof health.data?.local_enabled === "boolean" ? health.data.local_enabled : undefined;
   const q = useQuery({
     queryKey: qk.local(""),
     queryFn: () => api.local.list(""),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
+    enabled: health.isFetched && known === undefined,
   });
+  if (known !== undefined) return known;
   if (q.isSuccess) return true;
   if (q.isError) return !(q.error instanceof ApiError && (q.error.code === "local_disabled" || q.error.status === 404));
   return undefined;

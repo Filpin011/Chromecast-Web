@@ -74,7 +74,9 @@ export function useSendToTv(onLanded: () => void) {
           if (notify) toast.error(message);
         }
       };
-      const notStarted = () => finish(t("localPlayer.castNotStarted", { device: deviceName(useAppStore.getState(), deviceId ?? "") }), true);
+      // `notify`: toast it too, unless the server already toasts the failure (playback_failed on IDLE/ERROR)
+      const notStarted = (notify = true) =>
+        finish(t("localPlayer.castNotStarted", { device: deviceName(useAppStore.getState(), deviceId ?? "") }), notify);
 
       // nothing heard yet: give up quietly, but never while the user is still choosing a device
       const waitForTarget = () =>
@@ -89,7 +91,7 @@ export function useSendToTv(onLanded: () => void) {
           if (castLanded(player, pending, answer)) {
             finish();
             landedRef.current();
-          } else if (!pending && player?.player_state === "IDLE") notStarted();
+          } else if (!pending && player?.player_state === "IDLE") notStarted(false);
         };
         cleanups.current.push(useAppStore.subscribe(check));
         check(useAppStore.getState());
@@ -101,12 +103,12 @@ export function useSendToTv(onLanded: () => void) {
           else if (e.type === "device") {
             deviceId = e.deviceId;
             setState({ phase: "sending", deviceId: e.deviceId });
-            later(notStarted);
+            later(() => notStarted());
           } else if (e.type === "ok") {
             if (deviceId !== e.player.device_id) {
               deviceId = e.player.device_id;
               setState({ phase: "sending", deviceId });
-              later(notStarted);
+              later(() => notStarted());
             }
             watch(e.player);
           } else finish(e.message); // the cast path already showed a toast
