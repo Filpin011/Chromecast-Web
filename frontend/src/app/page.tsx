@@ -12,7 +12,8 @@ import { PageBody, PageHeader } from "@/components/common/page-header";
 import { Section } from "@/components/common/section";
 import { Thumb } from "@/components/common/thumb";
 import { SiteTiles } from "@/components/favorites/site-tiles";
-import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
+import { ListRowSkeleton } from "@/components/common/list-row";
+import { MediaRow } from "@/components/library/media-row";
 import { Button } from "@/components/ui/button";
 import { useAddFavorite, useFavorites, useHistory } from "@/hooks/queries";
 import { useCast } from "@/hooks/use-cast";
@@ -104,7 +105,7 @@ export default function CastPage() {
           <Section title={t("cast.recent")} icon={Clock} href="/library/?tab=history">
             <div className="rounded-2xl border bg-card p-1">
               {history.isLoading
-                ? Array.from({ length: 3 }, (_, i) => <MediaRowSkeleton key={i} />)
+                ? Array.from({ length: 3 }, (_, i) => <ListRowSkeleton key={i} />)
                 : history.data?.map((h) => (
                     <MediaRow
                       key={h.id}

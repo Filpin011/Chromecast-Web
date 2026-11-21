@@ -1,15 +1,9 @@
 "use client";
 
-import { ListPlus, MoreVertical, Pencil, Play, Star, Trash2 } from "lucide-react";
+import { ListPlus, Pencil, Star, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ListRow, type RowAction } from "@/components/common/list-row";
 import { Thumb } from "@/components/common/thumb";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useT } from "@/i18n";
 
 export interface MediaRowProps {
@@ -24,71 +18,24 @@ export interface MediaRowProps {
   disabled?: boolean;
 }
 
-/** Tappable list row (tap = cast) with an overflow menu for secondary actions. */
+/** A castable item as a `ListRow` (tap = cast) with queue / favorite / rename / delete in its menu. */
 export function MediaRow({ title, subtitle, thumbnail, onCast, onQueue, onFavorite, onRename, onDelete, disabled }: MediaRowProps) {
   const t = useT();
-  const hasMenu = onQueue || onFavorite || onRename || onDelete;
+  const actions: RowAction[] = [];
+  if (onQueue) actions.push({ label: t("media.addToQueue"), icon: ListPlus, onClick: onQueue });
+  if (onFavorite) actions.push({ label: t("media.addToFavorites"), icon: Star, onClick: onFavorite });
+  if (onRename) actions.push({ label: t("favorites.rename"), icon: Pencil, onClick: onRename });
+  if (onDelete) actions.push({ label: t("common.delete"), icon: Trash2, onClick: onDelete, destructive: true });
   return (
-    <div className="flex items-center gap-1 rounded-xl transition-colors hover:bg-muted/50">
-      <button
-        type="button"
-        onClick={onCast}
-        disabled={disabled}
-        aria-label={t("captured.castName", { name: title })}
-        className="flex min-h-16 min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left active:bg-muted"
-      >
-        <div className="relative">
-          <Thumb src={thumbnail} alt="" className="aspect-video h-12" />
-          <span className="absolute inset-0 grid place-items-center rounded-lg bg-black/0 text-white opacity-0 transition group-hover:opacity-100">
-            <Play className="size-4" fill="currentColor" />
-          </span>
-        </div>
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-1 text-sm font-medium">{title}</span>
-          {subtitle && <span className="line-clamp-1 text-xs text-muted-foreground">{subtitle}</span>}
-        </span>
-      </button>
-      {hasMenu && (
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("playlists.actionsFor", { name: title })} />}>
-            <MoreVertical className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            {onQueue && (
-              <DropdownMenuItem onClick={onQueue}>
-                <ListPlus className="size-4" /> {t("media.addToQueue")}
-              </DropdownMenuItem>
-            )}
-            {onFavorite && (
-              <DropdownMenuItem onClick={onFavorite}>
-                <Star className="size-4" /> {t("media.addToFavorites")}
-              </DropdownMenuItem>
-            )}
-            {onRename && (
-              <DropdownMenuItem onClick={onRename}>
-                <Pencil className="size-4" /> {t("favorites.rename")}
-              </DropdownMenuItem>
-            )}
-            {onDelete && (
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 className="size-4" /> {t("common.delete")}
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}
-
-export function MediaRowSkeleton() {
-  return (
-    <div className="flex items-center gap-3 px-2 py-2">
-      <div className="aspect-video h-12 animate-pulse rounded-lg bg-muted" />
-      <div className="flex-1 space-y-2">
-        <div className="h-3.5 w-2/3 animate-pulse rounded bg-muted" />
-        <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-      </div>
-    </div>
+    <ListRow
+      leading={<Thumb src={thumbnail} alt="" className="aspect-video h-12" />}
+      title={title}
+      subtitle={subtitle}
+      onClick={onCast}
+      disabled={disabled}
+      label={t("captured.castName", { name: title })}
+      menuLabel={actions.length ? t("playlists.actionsFor", { name: title }) : undefined}
+      actions={actions}
+    />
   );
 }

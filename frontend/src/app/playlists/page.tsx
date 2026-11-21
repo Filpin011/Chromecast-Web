@@ -1,20 +1,14 @@
 "use client";
 
-import { ListVideo, MoreVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ListVideo, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EmptyState } from "@/components/common/empty-state";
+import { RowMenu } from "@/components/common/list-row";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { ImportPlaylistDialog } from "@/components/playlists/import-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useDeletePlaylist, usePlaylists, useRefreshPlaylist } from "@/hooks/queries";
 import { useT } from "@/i18n";
 import { formatRelative, hostOf } from "@/lib/format";
@@ -87,27 +81,21 @@ export default function PlaylistsPage() {
                     </p>
                   </div>
                 </Link>
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("playlists.actionsFor", { name: p.name })} />}>
-                    <MoreVertical className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {p.source_url && (
-                      <DropdownMenuItem onClick={() => refresh.mutate(p.id)}>
-                        <RefreshCw className="size-4" /> {t("playlists.refresh")}
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => {
+                <RowMenu
+                  label={t("playlists.actionsFor", { name: p.name })}
+                  actions={[
+                    ...(p.source_url ? [{ label: t("playlists.refresh"), icon: RefreshCw, onClick: () => refresh.mutate(p.id) }] : []),
+                    {
+                      label: t("common.delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      separated: !!p.source_url,
+                      onClick: () => {
                         if (window.confirm(t("playlists.deleteConfirm", { name: p.name }))) del.mutate(p.id);
-                      }}
-                    >
-                      <Trash2 className="size-4" /> {t("common.delete")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      },
+                    },
+                  ]}
+                />
               </li>
             ))}
           </ul>

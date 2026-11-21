@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { AlertTriangle, Star } from "lucide-react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { AlertTriangle, Star, Trash2 } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
+import { ListRow } from "@/components/common/list-row";
 import { MediaOverlay } from "@/components/common/media-overlay";
 import { SegmentedControl } from "@/components/common/segmented-control";
 
@@ -49,5 +50,33 @@ describe("MediaOverlay", () => {
     const { container } = render(<MediaOverlay spinner />);
     expect(container.firstElementChild).toHaveClass("pointer-events-none");
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("ListRow", () => {
+  it("taps its main area and opens the menu with its actions", async () => {
+    const onClick = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <ListRow
+        leading={<span />}
+        title="Item"
+        subtitle="Sub"
+        label="Open Item"
+        onClick={onClick}
+        menuLabel="Actions for Item"
+        actions={[{ label: "Delete", icon: Trash2, onClick: onDelete, destructive: true }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open Item" }));
+    expect(onClick).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Item" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalled());
+  });
+
+  it("has no menu button without a menu label", () => {
+    render(<ListRow leading={null} title="Item" label="Open Item" onClick={() => {}} />);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 });

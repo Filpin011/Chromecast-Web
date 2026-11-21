@@ -8,7 +8,8 @@ import { EmptyState } from "@/components/common/empty-state";
 import { SegmentedControl } from "@/components/common/segmented-control";
 import { PageBody, PageHeader } from "@/components/common/page-header";
 import { RenameFavoriteDialog } from "@/components/favorites/rename-dialog";
-import { MediaRow, MediaRowSkeleton } from "@/components/library/media-row";
+import { ListRowSkeleton } from "@/components/common/list-row";
+import { MediaRow } from "@/components/library/media-row";
 import { SiteRow } from "@/components/library/site-row";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,7 +94,7 @@ function LibraryInner() {
 
         <div className="rounded-2xl border bg-card p-1">
           {list.isLoading ? (
-            Array.from({ length: 5 }, (_, i) => <MediaRowSkeleton key={i} />)
+            Array.from({ length: 5 }, (_, i) => <ListRowSkeleton key={i} />)
           ) : tab === "sites" ? (
             sites.length ? (
               sites.map((f) => (
