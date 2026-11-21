@@ -133,7 +133,7 @@ export function AdblockSettings({ settings: s, onChange }: { settings: Settings 
           </div>
           <Button variant="secondary" size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
             {refresh.isPending ? <Spinner /> : <RefreshCw className="size-4" />}
-            {t("playlists.refresh")}
+            {t("adblock.refreshLists")}
           </Button>
         </div>
         {lists.length > 0 && (
