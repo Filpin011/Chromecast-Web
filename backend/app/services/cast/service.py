@@ -756,6 +756,9 @@ class CastService:
             pinned=is_pinned,
             resolved_at=time.time(),
         )
+        # new media starts with a clean slate: the BUFFERING of a channel switched within
+        # STEADY_AFTER of the previous LOAD is not a stall (nor a reason for the watchdog)
+        self._end_stall(device_id, "new media")
         await self._load(device_id, req)
         entry = QueueEntry(
             item=QueueItem(

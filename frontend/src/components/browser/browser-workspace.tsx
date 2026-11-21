@@ -324,7 +324,7 @@ export function BrowserWorkspace({
               <Maximize2 className="size-4 shrink-0" /> <span className="truncate">{t("browser.fitScreen")}</span>
             </button>
           )}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <AnimatePresence>
               {panelVisible && (
                 <StreamPanel
@@ -356,7 +356,7 @@ export function BrowserWorkspace({
                 setPanelForced(true);
               }}
               className={cn(
-                "absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg md:hidden",
+                "absolute right-3 z-10 flex h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg lg:hidden",
                 keyboard ? "bottom-17" : "bottom-3",
               )}
             >
@@ -367,7 +367,8 @@ export function BrowserWorkspace({
               height from it would letterbox and shrink the page right when the user aims at a field. */}
           {keyboard && <KeyboardBar send={send} autoFocus className="absolute inset-x-0 bottom-0 z-30 shadow-lg" />}
         </div>
-        <aside className="hidden w-80 shrink-0 flex-col border-l bg-background md:flex lg:w-96">
+        {/* from lg only: on a portrait tablet (md) the app sidebar plus this column left the page ~260 px */}
+        <aside className="hidden w-96 shrink-0 flex-col border-l bg-background lg:flex">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <h2 className="text-sm font-semibold">{t("browser.detectedStreams")}</h2>
             <div className="flex items-center gap-1">
@@ -438,7 +439,7 @@ export function BrowserWorkspace({
             <DropdownMenuItem onClick={stopMedia}>
               <Square className="size-4" /> {t("browser.stopMedia")}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setListOpen(true)} className="md:hidden">
+            <DropdownMenuItem onClick={() => setListOpen(true)} className="lg:hidden">
               <Radar className="size-4" /> {t("browser.detectedStreamsCount", { count: ranked.length })}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onReopen(mode === "mobile" ? "desktop" : "mobile", session.url)}>

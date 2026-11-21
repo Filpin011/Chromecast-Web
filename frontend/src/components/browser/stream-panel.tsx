@@ -50,12 +50,13 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold transition active:scale-95 disabled:opacity-50",
+        "flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl py-1.5 text-[0.7rem] font-semibold transition active:scale-95 disabled:opacity-50",
         primary ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25" : "bg-muted text-foreground",
       )}
     >
       <Icon className="size-5" />
-      <span className="max-w-full truncate px-1">{label}</span>
+      {/* two lines rather than an ellipsis: five actions share a phone's width ("Guarda qui") */}
+      <span className="line-clamp-2 max-w-full px-0.5 text-center leading-tight">{label}</span>
     </button>
   );
 }
