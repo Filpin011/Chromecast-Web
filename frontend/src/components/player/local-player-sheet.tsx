@@ -256,7 +256,8 @@ export function LocalPlayerContent({ media, onClose }: { media: LocalMedia; onCl
                 onCast={sendToTv}
               />
             )}
-            {!failed && (state.status === "loading" || (state.buffering && !state.paused)) && <MediaOverlay spinner size="sm" />}
+            {/* full screen, the centre play button already spins */}
+            {!failed && !fullscreen && (state.status === "loading" || (state.buffering && !state.paused)) && <MediaOverlay spinner size="sm" />}
             {failed && (
               <MediaOverlay
                 role="alert"
