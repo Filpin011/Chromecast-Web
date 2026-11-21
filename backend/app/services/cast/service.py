@@ -8,11 +8,12 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from app.db import Database
 from app.errors import AppError
 from app.models import ControlAction, Device, PlayerState, QueueItem, ResolvedMedia, SourceKind, utcnow
-from app.services.cast.base import CastDriver, CastError, DriverEvent, MediaRequest
+from app.services.cast.base import CastDriver, CastError, DeviceStatus, DriverEvent, MediaRequest
 from app.services.proxy.restream import WORST_STARTUP
 from app.services.queue import PlayQueue, QueueEntry
 from app.services.resolver.service import Resolver
@@ -28,6 +29,17 @@ PLAYBACK_ACTIONS = ("stop", "go_live", "next", "previous")
 # Queue/previous entries older than this are resolved again before playback: stream URLs
 # (yt-dlp googlevideo, page tokens) expire, and a dead URL stalls the queue on the TV.
 RERESOLVE_AFTER = 180.0
+# Auto-recovery of a stream the receiver dropped mid-playback (IDLE / ERROR after it had
+# played): wait this long before each reload attempt; len() = number of attempts.
+RECOVERY_BACKOFF = (2.0, 5.0, 10.0)
+# Media that is not LIVE is recovered only after it had been PLAYING this long (a VOD that
+# errors in its first seconds is a dead URL). It is also how long a recovered stream must
+# play again before its attempt budget is refilled (no endless reload loop).
+RECOVERY_MIN_PLAYED = 20.0
+# How long a reload attempt may take to reach PLAYING before it counts as failed.
+RECOVERY_OUTCOME_TIMEOUT = 30.0
+# BUFFERING longer than this is reported as PlayerState.stalled_since.
+STALL_AFTER = 4.0
 
 
 @dataclass
@@ -43,6 +55,26 @@ class _Meta:
     # The receiver rejected this LOAD (already reported by the HTTP call): an IDLE/ERROR
     # it broadcasts for it must not toast again nor advance the queue.
     load_failed: bool = False
+    # What is needed to resolve the media again during a recovery (see _play_media).
+    kind: SourceKind | None = None
+    pinned: bool = False
+    resolved_at: float = 0.0
+    # Playback accounting (monotonic clock), fed by build_player's status observations.
+    playing_since: float | None = None
+    played_total: float = 0.0
+    last_run: float = 0.0
+    # Auto-recovery of a dropped stream (see CastService._recover).
+    recovering: bool = False
+    recovery_attempt: int = 0
+    recovery_waiter: asyncio.Future[bool] | None = None
+
+    def mark_playing(self, playing: bool, now: float) -> None:
+        if playing and self.playing_since is None:
+            self.playing_since = now
+        elif not playing and self.playing_since is not None:
+            self.last_run = now - self.playing_since
+            self.played_total += self.last_run
+            self.playing_since = None
 
 
 class CastService:
@@ -70,6 +102,11 @@ class CastService:
         # epoch bumped by every LOAD so a stale "finished" event can't advance the queue.
         self._play_locks: dict[str, asyncio.Lock] = {}
         self._epoch: dict[str, int] = {}
+        self._recovery_tasks: dict[str, asyncio.Task[None]] = {}
+        # BUFFERING start per device (for stalled_since) and the timer that re-broadcasts
+        # the player once it counts as stalled.
+        self._buffering_since: dict[str, tuple[float, datetime]] = {}
+        self._stall_timers: dict[str, asyncio.TimerHandle] = {}
 
     # ------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -85,12 +122,21 @@ class CastService:
     async def stop(self) -> None:
         for t in list(self._tasks):
             t.cancel()
+        for h in self._stall_timers.values():
+            h.cancel()
+        self._stall_timers.clear()
         await self.driver.stop()
 
-    def _spawn(self, coro) -> None:  # type: ignore[no-untyped-def]
+    def _spawn(self, coro) -> asyncio.Task[None]:  # type: ignore[no-untyped-def]
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+        return task
+
+    def _dev(self, device_id: str) -> str:
+        """Device as written in log lines: ``"<friendly name>" (<id[:8]>)``."""
+        dev = self.driver.find_device(device_id)
+        return f'"{dev.name if dev else device_id}" ({device_id[:8]})'
 
     # ------------------------------------------------------------ driver events
     def _on_event(self, event: DriverEvent, device_id: str | None, message: str | None) -> None:
@@ -114,11 +160,46 @@ class CastService:
         elif device_id in self.hub.players:
             self.hub.remove_player(device_id)
 
+    def _observe(self, device_id: str, st: DeviceStatus, meta: _Meta, ours: bool) -> datetime | None:
+        """Track what the receiver reports (playing time of our media, BUFFERING start) and
+        return ``stalled_since``. Called for every status the service turns into a player."""
+        now = time.monotonic()
+        if ours and not meta.showing_idle:
+            meta.mark_playing(st.player_state == "PLAYING", now)
+            waiter = meta.recovery_waiter
+            if st.player_state == "PLAYING" and waiter is not None and not waiter.done():
+                waiter.set_result(True)
+        if st.player_state != "BUFFERING" or (ours and meta.showing_idle):
+            self._buffering_since.pop(device_id, None)
+            if timer := self._stall_timers.pop(device_id, None):
+                timer.cancel()
+            return None
+        since = self._buffering_since.get(device_id)
+        if since is None:
+            since = self._buffering_since[device_id] = (now, utcnow())
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:  # pragma: no cover - outside the event loop (sync callers)
+                loop = None
+            if loop is not None:
+                if timer := self._stall_timers.pop(device_id, None):
+                    timer.cancel()
+                self._stall_timers[device_id] = loop.call_later(STALL_AFTER + 0.05, self._on_stall_timer, device_id)
+        return since[1] if now - since[0] >= STALL_AFTER else None
+
+    def _on_stall_timer(self, device_id: str) -> None:
+        self._stall_timers.pop(device_id, None)
+        if device_id in self._buffering_since:
+            log.debug("player stalled device=%s buffering_for=%.1fs", self._dev(device_id), STALL_AFTER)
+            self._push(device_id)
+
     def build_player(self, device_id: str) -> PlayerState:
         st = self.driver.status(device_id)
         meta = self._meta.get(device_id) or _Meta()
-        ours = meta.media_url is not None and st.media_url == meta.media_url
+        # while recovering the receiver may have dropped the media: keep showing ours
+        ours = meta.media_url is not None and (st.media_url == meta.media_url or meta.recovering)
         showing_idle = ours and meta.showing_idle
+        stalled_since = self._observe(device_id, st, meta, ours)
         return PlayerState(
             device_id=device_id,
             connected=st.connected,
@@ -139,6 +220,9 @@ class CastService:
             active_track_ids=[] if showing_idle else list(st.active_track_ids),
             queue=self.queue.items(device_id),
             showing_idle_image=showing_idle,
+            recovering=meta.recovering,
+            recovery_attempt=meta.recovery_attempt if meta.recovering else 0,
+            stalled_since=stalled_since,
             updated_at=utcnow(),
         )
 
@@ -194,16 +278,23 @@ class CastService:
             if meta and (meta.showing_idle or meta.load_failed):
                 return
             if reason == "ERROR":
-                # the receiver accepted the LOAD and then gave up (dead / expired URL)
+                # the receiver accepted the LOAD and then gave up (dead / expired URL, or a
+                # live stream it dropped mid-playback)
                 st = self.driver.status(device_id)
                 if meta is None or (st.media_url not in (None, meta.media_url)):
                     return  # not media we loaded
-                title = meta.title or meta.media_url or ""
-                self.hub.toast(
-                    "error", f"Playback failed on the Chromecast: “{title}”", "playback_failed", {"title": title}
-                )
+                if meta.recovering:
+                    # a recovery reload failed: _recover moves on to the next attempt
+                    if meta.recovery_waiter is not None and not meta.recovery_waiter.done():
+                        meta.recovery_waiter.set_result(False)
+                    return
+                if self._should_recover(device_id, meta):
+                    self._start_recovery(device_id, meta)
+                    return
+                self._toast_playback_failed(meta)
                 await self._play_next(device_id)
                 return
+            self._cancel_recovery(device_id)
             if await self._play_next(device_id):
                 return
             if self.db.get_settings().show_idle_on_stop:
@@ -211,6 +302,167 @@ class CastService:
                     await self._show_idle(device_id)
                 except AppError as exc:
                     log.info("idle image after finish failed: %s", exc.detail)
+
+    def _toast_playback_failed(self, meta: _Meta) -> None:
+        title = meta.title or meta.media_url or ""
+        self.hub.toast("error", f"Playback failed on the Chromecast: “{title}”", "playback_failed", {"title": title})
+
+    # ------------------------------------------------------------ auto-recovery
+    def _should_recover(self, device_id: str, meta: _Meta) -> bool:
+        """An IDLE/ERROR of media we loaded: reload it instead of skipping it when it is a
+        LIVE stream that had played, or any media that had played for a while."""
+        if meta.request is None:
+            return False
+        meta.mark_playing(False, time.monotonic())  # close a run the status didn't end
+        live = meta.request.stream_type == "LIVE" or self.driver.status(device_id).stream_type == "LIVE"
+        if not ((live and meta.played_total > 0) or meta.played_total >= RECOVERY_MIN_PLAYED):
+            return False
+        if meta.last_run >= RECOVERY_MIN_PLAYED:
+            meta.recovery_attempt = 0  # it played long enough since the last recovery
+        return meta.recovery_attempt < len(RECOVERY_BACKOFF)
+
+    def _start_recovery(self, device_id: str, meta: _Meta) -> None:
+        self._cancel_recovery(device_id)
+        meta.recovering = True
+        log.info(
+            "recovery started device=%s title=%r played=%.0fs stream_type=%s",
+            self._dev(device_id),
+            meta.title,
+            meta.played_total,
+            meta.request.stream_type if meta.request else None,
+        )
+        self._recovery_tasks[device_id] = self._spawn(self._recover(device_id, meta))
+        self._push(device_id)
+
+    def _cancel_recovery(self, device_id: str) -> None:
+        """A user action (or new media) replaces what is being recovered."""
+        task = self._recovery_tasks.pop(device_id, None)
+        meta = self._meta.get(device_id)
+        if meta is not None and meta.recovering:
+            meta.recovering = False
+            log.info("recovery cancelled device=%s title=%r", self._dev(device_id), meta.title)
+        if task is not None and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+
+    async def _recover(self, device_id: str, meta: _Meta) -> None:
+        """Reload ``meta``'s media with backoff until it plays again or attempts run out."""
+        lock = self._play_lock(device_id)
+        total = len(RECOVERY_BACKOFF)
+        title = meta.title or meta.media_url or ""
+        try:
+            while meta.recovery_attempt < total:
+                delay = RECOVERY_BACKOFF[meta.recovery_attempt]
+                meta.recovery_attempt += 1
+                attempt = meta.recovery_attempt
+                self.hub.toast(
+                    "info",
+                    f"Stream interrupted, reconnecting… ({attempt}/{total})",
+                    "stream_reconnecting",
+                    {"title": title, "attempt": attempt, "max": total},
+                )
+                self._push(device_id)
+                await asyncio.sleep(delay)
+                async with lock:
+                    if self._meta.get(device_id) is not meta or not meta.recovering:
+                        return  # a user action replaced it
+                    waiter = await self._recovery_load(device_id, meta, attempt)
+                if waiter is None:
+                    continue
+                timeout = max(RECOVERY_OUTCOME_TIMEOUT, (meta.request.load_timeout or 0) if meta.request else 0)
+                try:
+                    played = await asyncio.wait_for(waiter, timeout)
+                except TimeoutError:
+                    played = False
+                    log.info(
+                        "recovery attempt timed out device=%s attempt=%d/%d timeout=%.0fs",
+                        self._dev(device_id),
+                        attempt,
+                        total,
+                        timeout,
+                    )
+                if self._meta.get(device_id) is not meta or not meta.recovering:
+                    return
+                if played:
+                    meta.recovering = False
+                    meta.recovery_waiter = None
+                    log.info("recovery succeeded device=%s attempt=%d/%d", self._dev(device_id), attempt, total)
+                    self.hub.toast("success", "Stream restored", "stream_restored", {"title": title})
+                    self._push(device_id)
+                    return
+            async with lock:
+                if self._meta.get(device_id) is not meta or not meta.recovering:
+                    return
+                meta.recovering = False
+                meta.recovery_waiter = None
+                log.info("recovery gave up device=%s title=%r attempts=%d", self._dev(device_id), meta.title, total)
+                self._toast_playback_failed(meta)
+                if await self._play_next(device_id):
+                    return
+                if self.db.get_settings().show_idle_on_stop:
+                    try:
+                        await self._show_idle(device_id)
+                    except AppError as exc:
+                        log.info(
+                            "idle image after recovery failed device=%s detail=%s", self._dev(device_id), exc.detail
+                        )
+                else:
+                    self._push(device_id)
+        finally:
+            if self._recovery_tasks.get(device_id) is asyncio.current_task():
+                self._recovery_tasks.pop(device_id, None)
+
+    async def _recovery_load(self, device_id: str, meta: _Meta, attempt: int) -> asyncio.Future[bool] | None:
+        """One reload attempt (caller holds the play lock). Returns a future resolved when the
+        receiver reports PLAYING (True) or IDLE/ERROR (False); None when the LOAD itself (or
+        resolving the input again) failed."""
+        assert meta.request is not None
+        stale = time.time() - meta.resolved_at > RERESOLVE_AFTER
+        # the same media first; resolved again when it is old (expired tokens) or a plain
+        # reload already failed, unless it can't be derived from its input (browser capture)
+        reresolve = (stale or attempt > 1) and not meta.pinned and bool(meta.original_input)
+        if reresolve:
+            try:
+                media = await self.resolver.resolve_media(meta.original_input or "", meta.kind, meta.title)
+            except AppError as exc:
+                log.info(
+                    "recovery attempt failed device=%s attempt=%d step=resolve detail=%s",
+                    self._dev(device_id),
+                    attempt,
+                    exc.detail,
+                )
+                return None
+            if meta.thumbnail and not media.thumbnail:
+                media.thumbnail = meta.thumbnail
+            await self._release_restream(device_id, media.cast_url)
+            meta.request = self._media_request(media)
+            meta.media_url = media.cast_url
+            meta.resolved_at = time.time()
+        elif job := self.resolver.restream.job_for_url(meta.request.url):
+            self.resolver.restream.warm(job)
+        log.info(
+            "recovery attempt device=%s attempt=%d/%d reresolved=%s",
+            self._dev(device_id),
+            attempt,
+            len(RECOVERY_BACKOFF),
+            reresolve,
+        )
+        waiter: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        meta.recovery_waiter = waiter
+        meta.load_failed = False
+        self._bump_epoch(device_id)
+        try:
+            await self._load(device_id, meta.request)
+        except AppError as exc:
+            log.info(
+                "recovery attempt failed device=%s attempt=%d step=load detail=%s",
+                self._dev(device_id),
+                attempt,
+                exc.detail,
+            )
+            meta.recovery_waiter = None
+            return None
+        self._push(device_id)
+        return waiter
 
     async def _play_next(self, device_id: str) -> bool:
         """Play the next queued entry (caller holds the device's play lock)."""
@@ -263,6 +515,7 @@ class CastService:
         dev = self.get_device(device_id)
         if not dev.manual:
             raise AppError(400, "Only manually added devices can be removed", "not_manual")
+        self._cancel_recovery(device_id)
         await self.driver.remove_device(device_id)
         self.db.delete_manual_device(device_id)
         self.queue.clear(device_id)
@@ -294,6 +547,7 @@ class CastService:
 
     async def disconnect(self, device_id: str) -> None:
         self.get_device(device_id)
+        self._cancel_recovery(device_id)
         await self.driver.disconnect(device_id)
         self._meta.pop(device_id, None)
         self.hub.remove_player(device_id)
@@ -366,25 +620,10 @@ class CastService:
         recorded under its page URL); by default that is the case when the history input
         differs from the media's own input."""
         await self._ensure_connected(device_id, auto=True)
-        load_timeout = None
+        self._cancel_recovery(device_id)
         await self._release_restream(device_id, media.cast_url)
-        job = self.resolver.restream.job_for_url(media.cast_url)
-        if job is not None:
-            # start ffmpeg now (overlaps with the receiver launching), and give the LOAD
-            # enough time for the probe + first segment
-            self.resolver.restream.warm(job)
-            load_timeout = RESTREAM_LOAD_TIMEOUT
-        req = MediaRequest(
-            url=media.cast_url,
-            mime_type=media.mime_type,
-            title=media.title,
-            thumbnail=media.thumbnail,
-            stream_type=media.stream_type,
-            subtitles=list(media.subtitles),
-            hls_segment_format=media.hls_segment_format,
-            hls_video_segment_format=media.hls_video_segment_format,
-            load_timeout=load_timeout,
-        )
+        req = self._media_request(media)
+        is_pinned = (history_input not in (None, media.original_input)) if pinned is None else pinned
         self._bump_epoch(device_id)
         self._meta[device_id] = _Meta(
             media_url=media.cast_url,
@@ -392,6 +631,9 @@ class CastService:
             title=media.title,
             thumbnail=media.thumbnail,
             request=req,
+            kind=history_kind or media.source_kind,
+            pinned=is_pinned,
+            resolved_at=time.time(),
         )
         await self._load(device_id, req)
         entry = QueueEntry(
@@ -403,7 +645,7 @@ class CastService:
             ),
             kind=history_kind or media.source_kind,
             media=media,
-            pinned=(history_input not in (None, media.original_input)) if pinned is None else pinned,
+            pinned=is_pinned,
             resolved_at=time.time(),
         )
         self.queue.record_played(device_id, entry)
@@ -416,6 +658,26 @@ class CastService:
         )
         self.hub.active_device_id = device_id
         self._push(device_id)
+
+    def _media_request(self, media: ResolvedMedia) -> MediaRequest:
+        load_timeout = None
+        job = self.resolver.restream.job_for_url(media.cast_url)
+        if job is not None:
+            # start ffmpeg now (overlaps with the receiver launching), and give the LOAD
+            # enough time for the probe + first segment
+            self.resolver.restream.warm(job)
+            load_timeout = RESTREAM_LOAD_TIMEOUT
+        return MediaRequest(
+            url=media.cast_url,
+            mime_type=media.mime_type,
+            title=media.title,
+            thumbnail=media.thumbnail,
+            stream_type=media.stream_type,
+            subtitles=list(media.subtitles),
+            hls_segment_format=media.hls_segment_format,
+            hls_video_segment_format=media.hls_video_segment_format,
+            load_timeout=load_timeout,
+        )
 
     async def _load(self, device_id: str, req: MediaRequest) -> None:
         """Send the LOAD (epoch already bumped, meta set). A rejected LOAD is reported once,
@@ -453,6 +715,7 @@ class CastService:
         url = settings.idle_image_url or f"{self.base_url().rstrip('/')}/idle.jpg"
         mime = "image/png" if url.lower().split("?")[0].endswith(".png") else "image/jpeg"
         req = MediaRequest(url=url, mime_type=mime, title="Chromecast Web", is_image=True)
+        self._cancel_recovery(device_id)
         await self._release_restream(device_id)
         self._bump_epoch(device_id)
         self._meta[device_id] = _Meta(media_url=url, showing_idle=True, request=req)
@@ -462,6 +725,19 @@ class CastService:
 
     async def control(self, device_id: str, action: ControlAction, value: float | None) -> PlayerState:
         await self._ensure_connected(device_id, auto=False)
+        meta = self._meta.get(device_id)
+        if meta is not None and meta.recovering and action in (*PLAYBACK_ACTIONS, "play", "toggle"):
+            # the user takes over: stop/next/previous/go_live replace the media as usual, and
+            # play while reconnecting means "retry now" (the receiver has dropped the media)
+            self._cancel_recovery(device_id)
+            if action in ("play", "toggle"):
+                async with self._play_lock(device_id):
+                    if self._meta.get(device_id) is meta and meta.request is not None:
+                        meta.load_failed = False
+                        self._bump_epoch(device_id)
+                        await self._load(device_id, meta.request)
+                self._push(device_id)
+                return self.player(device_id)
         if action in PLAYBACK_ACTIONS:
             async with self._play_lock(device_id):
                 result = await self._control(device_id, action, value)

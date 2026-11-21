@@ -166,6 +166,11 @@ class PlayerState(Model):
     active_track_ids: list[int] = Field(default_factory=list)
     queue: list[QueueItem] = Field(default_factory=list)
     showing_idle_image: bool = False
+    # the receiver dropped the media mid-playback and the server is reloading it
+    recovering: bool = False
+    recovery_attempt: int = 0  # 1..N while recovering, 0 otherwise
+    # set while the receiver has been BUFFERING for more than a few seconds
+    stalled_since: datetime | None = None
     updated_at: datetime = Field(default_factory=utcnow)
 
 
