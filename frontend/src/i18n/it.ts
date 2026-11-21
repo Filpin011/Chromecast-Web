@@ -77,6 +77,9 @@ export const it: Messages = {
   "theme.system": "Sistema",
   "theme.label": "Tema",
   // files
+  "notFound.title": "Pagina non trovata",
+  "notFound.hint": "Questo indirizzo non corrisponde a nessuna schermata dell’app.",
+  "notFound.home": "Torna a Cast",
   "files.subtitle": "Media sul server",
   "files.disabled": "File locali non attivi",
   "files.disabledHint": "Imposta MEDIA_ROOT sul server per sfogliare e trasmettere i tuoi file.",

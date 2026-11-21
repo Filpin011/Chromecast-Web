@@ -81,6 +81,9 @@ export const en = {
   "theme.system": "System",
   "theme.label": "Theme",
   // files
+  "notFound.title": "Page not found",
+  "notFound.hint": "This address doesn’t match any screen of the app.",
+  "notFound.home": "Back to Cast",
   "files.subtitle": "Media on the server",
   "files.disabled": "Local files are off",
   "files.disabledHint": "Set MEDIA_ROOT on the server to browse and cast your files.",
