@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useAddFavorite, usePlaylist } from "@/hooks/queries";
 import { channelRequest, useCast } from "@/hooks/use-cast";
 import { useDebounced } from "@/hooks/use-debounced";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { Channel } from "@/lib/api/types";
 import { channelInput, preferredChannelLayout, type ChannelLayout } from "@/lib/channels";
 import { channelMedia, seekAfterCast } from "@/lib/local-player/sources";
@@ -25,6 +25,10 @@ import { useT } from "@/i18n";
 import { openLocalPlayer } from "@/stores/local-player-store";
 
 const PAGE = 200;
+
+function isNotFound(e: unknown): boolean {
+  return e instanceof ApiError && (e.code === "playlist_not_found" || e.status === 404);
+}
 const LAYOUT_KEY = "cw.channels.layout";
 
 function PlaylistView() {
@@ -83,6 +87,9 @@ function PlaylistView() {
   };
 
   const groups = playlist.data?.groups ?? [];
+  // a missing or unknown id (e.g. a deleted playlist's old link): one clear state, no endless "…"
+  const notFound = !id || isNotFound(playlist.error) || isNotFound(channels.error);
+  const countLabel = channels.isSuccess ? t.plural("playlists.channels", total) : notFound || channels.isError ? null : "…";
 
   return (
     <>
@@ -93,51 +100,62 @@ function PlaylistView() {
           </Button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-bold">{playlist.data?.name ?? t("playlists.fallbackName")}</h1>
-            <p className="text-xs text-muted-foreground tabular-nums">
-              {channels.isSuccess ? t.plural("playlists.channels", total) : "…"}
-            </p>
+            {countLabel && <p className="text-xs text-muted-foreground tabular-nums">{countLabel}</p>}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={layout === "grid" ? t("playlists.listView") : t("playlists.gridView")}
-            onClick={() => setLayout(layout === "grid" ? "list" : "grid")}
-          >
-            {layout === "grid" ? <List className="size-5" /> : <LayoutGrid className="size-5" />}
-          </Button>
+          {!notFound && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={layout === "grid" ? t("playlists.listView") : t("playlists.gridView")}
+              onClick={() => setLayout(layout === "grid" ? "list" : "grid")}
+            >
+              {layout === "grid" ? <List className="size-5" /> : <LayoutGrid className="size-5" />}
+            </Button>
+          )}
           <DeviceButton className="md:hidden" />
         </div>
-        <div className="mx-auto max-w-5xl space-y-2 px-4 pb-2 md:px-8">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              aria-label={t("playlists.searchChannel")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("playlists.searchChannel")}
-              className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40 [&::-webkit-search-cancel-button]:appearance-none"
-            />
-            {q && (
-              <button type="button" aria-label={t("common.clearSearch")} onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
-                <X className="size-4" />
-              </button>
+        {!notFound && (
+          <div className="mx-auto max-w-5xl space-y-2 px-4 pb-2 md:px-8">
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                aria-label={t("playlists.searchChannel")}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={t("playlists.searchChannel")}
+                className="h-11 w-full rounded-xl bg-muted pr-10 pl-10 text-base outline-none focus:ring-2 focus:ring-primary/40 [&::-webkit-search-cancel-button]:appearance-none"
+              />
+              {q && (
+                <button type="button" aria-label={t("common.clearSearch")} onClick={() => setQ("")} className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-muted-foreground">
+                  <X className="size-4" />
+                </button>
+              )}
+            </div>
+            {groups.length > 0 && (
+              <ChipGroup<string | null>
+                aria-label={t("playlists.groupsLabel")}
+                className="-mx-4 px-4 md:-mx-8 md:px-8"
+                value={group}
+                onChange={setGroup}
+                options={[{ value: null, label: t("playlists.allGroups") }, ...groups.map((g) => ({ value: g, label: g }))]}
+              />
             )}
           </div>
-          {groups.length > 0 && (
-            <ChipGroup<string | null>
-              aria-label={t("playlists.groupsLabel")}
-              className="-mx-4 px-4 md:-mx-8 md:px-8"
-              value={group}
-              onChange={setGroup}
-              options={[{ value: null, label: t("playlists.allGroups") }, ...groups.map((g) => ({ value: g, label: g }))]}
-            />
-          )}
-        </div>
+        )}
       </header>
       <PageBody className="pt-2">
-        {!id ? (
-          <EmptyState icon={SearchX} title={t("errors.playlist_not_found")} />
+        {notFound ? (
+          <EmptyState
+            icon={SearchX}
+            title={t("errors.playlist_not_found")}
+            description={t("playlists.loadFailedHint")}
+            action={
+              <Button variant="secondary" render={<Link href="/playlists/" />} nativeButton={false}>
+                {t("nav.playlists")}
+              </Button>
+            }
+          />
         ) : channels.isError ? (
           <EmptyState icon={SearchX} title={t("playlists.loadFailed")} description={t("playlists.loadFailedHint")} />
         ) : channels.isSuccess && total === 0 ? (
