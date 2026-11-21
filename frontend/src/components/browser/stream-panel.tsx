@@ -55,7 +55,7 @@ function ActionButton({
       )}
     >
       <Icon className="size-5" />
-      <span className="max-w-full truncate px-1">{label}</span>
+      <span className="line-clamp-2 max-w-full px-0.5 text-center leading-tight break-words">{label}</span>
     </button>
   );
 }
@@ -132,7 +132,7 @@ export function StreamPanel({
         </div>
       )}
 
-      <div className={cn("mt-3 grid gap-2", onWatch ? "grid-cols-5" : "grid-cols-4")}>
+      <div className={cn("mt-3 grid", onWatch ? "grid-cols-5 gap-1.5" : "grid-cols-4 gap-2")}>
         <ActionButton icon={Cast} label={t("common.cast")} primary onClick={() => onCast(stream)} disabled={busy} />
         <ActionButton icon={ListPlus} label={t("common.queue")} onClick={() => onQueue(stream)} disabled={busy} />
         <ActionButton icon={Play} label={t("common.preview")} onClick={() => onPlay(stream)} />
