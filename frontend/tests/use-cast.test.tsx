@@ -124,6 +124,36 @@ describe("useCast", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
+  it("casts to the default device even when no page has loaded the settings yet", async () => {
+    useAppStore.getState().applySnapshot(makeAppState({ active_device_id: null, players: {} }));
+    const settings = vi.spyOn(api.settings, "get").mockResolvedValue({
+      default_device_id: "dev-1",
+      idle_image_url: null,
+      show_idle_on_connect: true,
+      show_idle_on_stop: false,
+      public_base_url: null,
+      force_proxy: false,
+      adblock_enabled: true,
+      adblock_disabled_hosts: [],
+      popup_policy: "ask",
+      popup_blocked_hosts: [],
+    });
+    const play = vi.spyOn(api.player, "play").mockResolvedValue(makePlayer());
+    const { result } = renderHook(() => useCast(), { wrapper });
+    await act(() => result.current.cast({ input: "http://a/b.mp4" }));
+    expect(settings).toHaveBeenCalled();
+    expect(play).toHaveBeenCalledWith("dev-1", expect.objectContaining({ input: "http://a/b.mp4" }));
+    expect(useUiStore.getState().devicePickerOpen).toBe(false);
+  });
+
+  it("names the enqueued item in the toast, not the media still playing", async () => {
+    useAppStore.getState().applySnapshot(makeAppState());
+    vi.spyOn(api.player, "enqueue").mockResolvedValue(makePlayer({ title: "Now playing" }));
+    const { result } = renderHook(() => useCast(), { wrapper });
+    await act(() => result.current.cast({ input: "x", title: "Next one", enqueue: true }));
+    expect(toast.success).toHaveBeenCalledWith("Added to queue", expect.objectContaining({ description: "Next one" }));
+  });
+
   it("reports failures", async () => {
     useAppStore.getState().applySnapshot(makeAppState());
     vi.spyOn(api.player, "play").mockRejectedValue(new Error("resolve_failed"));

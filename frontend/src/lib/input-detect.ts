@@ -21,7 +21,11 @@ export function detectInput(raw: string): DetectedInput {
   if (!value) return { kind: "empty", value };
   if (value.startsWith("#EXTM3U")) return { kind: "m3u", value, sourceKind: "m3u" };
 
-  let candidate = value;
+  // Kodi-style upstream headers ("url|Referer=…&User-Agent=…") are kept verbatim and out of the URL parsing:
+  // Chromium percent-encodes the "|" and the backend would no longer see the headers.
+  const pipe = value.indexOf("|");
+  const headers = pipe > 0 ? value.slice(pipe) : "";
+  let candidate = pipe > 0 ? value.slice(0, pipe) : value;
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) {
     // bare domain like "example.com/live" → assume https
     if (/^[\w-]+(\.[\w-]+)+(:\d+)?(\/\S*)?$/.test(candidate)) candidate = `https://${candidate}`;
@@ -36,7 +40,7 @@ export function detectInput(raw: string): DetectedInput {
   if (!["http:", "https:", "rtmp:", "rtsp:", "udp:", "rtp:"].includes(url.protocol)) {
     return { kind: "invalid", value };
   }
-  const href = url.toString();
+  const href = url.toString() + headers;
   if (YT_RE.test(href)) return { kind: "youtube", value: href, sourceKind: "ytdlp" };
   if (M3U_RE.test(url.pathname) || /[?&](type|output)=m3u(_plus)?\b/i.test(url.search)) {
     return { kind: "m3u", value: href, sourceKind: "m3u" };
