@@ -247,7 +247,7 @@ interface ApiError {
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| GET | `/api/health` | | `{status:"ok", driver:string, version:string}` |
+| GET | `/api/health` | | `{status:"ok", driver:string, version:string, local_enabled:boolean}` (`local_enabled`: `MEDIA_ROOT` set, the Files section is available) |
 | GET | `/api/state` | | `AppState` |
 | GET | `/api/devices` | | `Device[]` |
 | POST | `/api/devices/discover` | | `Device[]` (runs discovery ~5s, non-blocking for other requests) |
@@ -353,7 +353,8 @@ Backend behaviour notes (implemented in `backend/`):
   the server gives up as above (and stops the media when there is no idle image to show). Verified on a Chromecast
   Ultra with a local origin whose segments hang mid-body.
 - `stalled_since` is set (and broadcast, without waiting for another status) once a stall has lasted more than 4 s.
-  A stall starts with `BUFFERING` and ends after 3 s of uninterrupted `PLAYING`, or on `IDLE` / `PAUSED`.
+  A stall starts with `BUFFERING` and ends after 3 s of uninterrupted `PLAYING`, or on `IDLE` / `PAUSED`. A new play / LOAD
+  of other media ends the current stall (zapping never inherits one); a recovery reload does not.
 - HLS whose CORS can't be verified (probed with `Origin: https://www.gstatic.com` on the playlist, first variant,
   audio rendition and their first segments; a CDN answering that Origin with an HTTP error is probed again without
   it, for master/live/segment format, and proxied), DASH whose manifest doesn't answer that Origin, any source needing
@@ -374,6 +375,9 @@ Backend behaviour notes (implemented in `backend/`):
   `.mp4`, `.ts`…), not only for pages; an HTTP error from a reachable host is still cast.
 - Every upstream request (probes, `/proxy`, ffmpeg) sends a desktop-browser `User-Agent` unless the source captured
   or specified its own.
+- A direct URL with no better title is named after its last path segment without extension, skipping generic names
+  (`index`, `master`, `playlist`, `chunklist`, `manifest`, `stream`, `live`, `main`, `video`, `mono`):
+  `…/lo-fi-lounge/index.m3u8` → "lo-fi-lounge"; all generic → the host.
 - Matroska (`.mkv`, `video/x-matroska`) is announced to the receiver as `video/mp4` (its `canPlayType` rejects
   `video/x-matroska`, while the demuxer plays H.264/AAC MKV).
 - yt-dlp: muxed formats are preferred; when a site only offers split video/audio (current YouTube), the HLS
@@ -525,7 +529,8 @@ frame navigates to another document URL, SPA history navigations included; `#has
 navigations keep it. The manual `DELETE …/captured` empties it too and forgets the URLs already seen (anything
 fetched afterwards is listed again; child playlists of known masters stay hidden).
 
-Max 2 concurrent sessions (a 3rd create first reaps idle ones, else 429 `browser_limit`); sessions with no
+Max 2 concurrent sessions (a 3rd create first reaps idle ones, then closes the oldest session with no connected viewer,
+else 429 `browser_limit`); sessions with no
 connected `/ws/browser` viewer and no input for 3 minutes (`BROWSER_IDLE_TIMEOUT`, 180 s) are closed. Chromium itself is
 closed 60 s after the last context (session or page probe) closes and launched again on the next request (~0.6-2 s). Casting/bookmarking a captured stream records
 the **page URL** (`source_kind: "webpage"`) in history/favorites, because captured stream URLs carry expiring
@@ -578,6 +583,9 @@ Popups/new tabs opened by the page are followed into the same session (ad popups
 traffic is still sniffed). Tests mock Playwright entirely.
 
 ### Browser UX reference (added by the user after the build started — reviewers: check this is implemented)
+
+Layout: the desktop side column (detected streams) appears from `lg` (>= 1024 px); below that (phones and portrait
+tablets) the page uses the full width with the sliding panel and the streams drawer.
 
 The user's reference is a mobile "web video caster" style app. Required behaviour:
 

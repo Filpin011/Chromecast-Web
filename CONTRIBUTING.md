@@ -44,6 +44,7 @@ make dev            # backend with the fake Chromecast (:8000) + Next dev server
 make test           # every check: pytest + ruff, typecheck + lint + vitest + static build
 make serve          # production-like: the backend serves the static export on :8000
 make demo           # fake Chromecast + fictional demo data on :8000 (backend/scripts/demo.py)
+                    # next to a running dev server: cd backend && .venv/bin/python scripts/demo.py --port 8077 --content-port 8766
 make screenshots    # regenerate docs/screenshots + docs/assets/hero.png from the demo (needs Chromium)
 make brand          # re-render icons/favicon/social preview from docs/assets/icon*.svg
 ```
