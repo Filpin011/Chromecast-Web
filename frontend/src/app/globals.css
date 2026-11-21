@@ -90,6 +90,8 @@
   --sidebar-ring: oklch(0.6 0.18 275);
 }
 
+/* The TV receiver (backend/app/static/receiver/receiver.css) mirrors these dark values as hex:
+   keep --background, --primary, --live and --warning in sync there. */
 .dark {
   --background: oklch(0.14 0.008 275);
   --foreground: oklch(0.97 0.004 270);
